@@ -4,7 +4,7 @@ import { URL } from 'url';
 import * as vscode from 'vscode';
 import { AuthManager } from './authManager';
 
-const PRODUCTION_URL = 'https://flowsave-backend.onrender.com';
+const PRODUCTION_URL = 'https://flowsave.onrender.com';
 
 function getBackendUrl(): string {
     const config = vscode.workspace.getConfiguration('flowsave');
