@@ -15,7 +15,7 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Entity
-@Table(name = "context_snapshots")
+@Table(name = "context_snapshots_v2")
 public class ContextSnapshot {
 
     @Id
@@ -28,7 +28,7 @@ public class ContextSnapshot {
 
     private String label;
 
-    @Column(columnDefinition = "jsonb")
+    @Column(columnDefinition = "text")
     private String openFiles;
 
     @Column(columnDefinition = "text")

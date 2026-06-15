@@ -1,11 +1,38 @@
 {
   "name": "flowsave",
   "displayName": "FlowSave",
-  "description": "Save and restore your development context with AI-powered re-entry briefs",
+  "description": "Save and restore your development context with AI-powered re-entry briefs. Pick up exactly where you left off.",
   "version": "1.0.0",
-  "engines": { "vscode": "^1.85.0" },
+  "publisher": "AtharvChanana",
+  "author": {
+    "name": "Atharv Chanana"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AtharvChanana/FlowSave.git"
+  },
+  "homepage": "https://github.com/AtharvChanana/FlowSave#readme",
+  "bugs": {
+    "url": "https://github.com/AtharvChanana/FlowSave/issues"
+  },
+  "icon": "resources/icon.png",
+  "galleryBanner": {
+    "color": "#0f0f0f",
+    "theme": "dark"
+  },
+  "keywords": [
+    "context",
+    "productivity",
+    "ai",
+    "save",
+    "restore",
+    "developer",
+    "workflow"
+  ],
   "categories": ["Other"],
-  "activationEvents": ["onCommand:flowsave.save", "onCommand:flowsave.restore", "onCommand:flowsave.list"],
+  "engines": { "vscode": "^1.85.0" },
+  "activationEvents": ["onStartupFinished"],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
@@ -30,18 +57,30 @@
           "name": "FlowSave"
         }
       ]
+    },
+    "configuration": {
+      "title": "FlowSave",
+      "properties": {
+        "flowsave.backendUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Override the FlowSave backend URL (leave empty to use the default production server)"
+        }
+      }
     }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "lint": "eslint src --ext ts"
+    "lint": "eslint src --ext ts",
+    "package": "npx @vscode/vsce package",
+    "publish": "npx @vscode/vsce publish"
   },
   "devDependencies": {
     "@types/vscode": "^1.85.0",
     "@types/node": "^20.0.0",
-    "typescript": "^5.3.0"
-  },
-  "publisher": "flowsave"
+    "typescript": "^5.3.0",
+    "@vscode/vsce": "^3.0.0"
+  }
 }

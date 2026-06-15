@@ -3,6 +3,7 @@ import { AuthManager } from './authManager';
 import { ApiClient } from './apiClient';
 import { captureContext } from './contextCapture';
 import { FlowSaveWebviewProvider } from './webviewPanel';
+import { checkAndInstallTerminalHook } from './terminalSetup';
 
 let webviewProvider: FlowSaveWebviewProvider;
 
@@ -38,6 +39,11 @@ export function activate(context: vscode.ExtensionContext) {
     });
 
     context.subscriptions.push(saveCmd, restoreCmd, listCmd);
+
+    // Check and setup terminal tracking
+    setTimeout(() => {
+        checkAndInstallTerminalHook().catch(console.error);
+    }, 3000); // Wait 3 seconds so we don't spam them instantly on startup
 
     console.log('FlowSave extension activated');
 }

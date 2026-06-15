@@ -7,3 +7,4 @@ target/
 mvnw
 mvnw.cmd
 application-local.properties
+run.local.sh

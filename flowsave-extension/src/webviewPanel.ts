@@ -6,11 +6,6 @@ import { restoreContext } from './contextRestore';
 
 /**
  * Sidebar webview provider for FlowSave.
- *
- * Renders three screens:
- *  1. Login / Register form
- *  2. Saved context list
- *  3. Restore detail / re-entry brief view
  */
 export class FlowSaveWebviewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'flowsave.webview';
@@ -23,9 +18,6 @@ export class FlowSaveWebviewProvider implements vscode.WebviewViewProvider {
         private readonly authManager: AuthManager
     ) {}
 
-    /**
-     * Called by VS Code when the sidebar webview becomes visible.
-     */
     public resolveWebviewView(
         webviewView: vscode.WebviewView,
         _resolveContext: vscode.WebviewViewResolveContext,
@@ -40,7 +32,6 @@ export class FlowSaveWebviewProvider implements vscode.WebviewViewProvider {
 
         webviewView.webview.html = this.getHtmlForWebview(webviewView.webview);
 
-        // ── Handle messages from the webview ────────────────────────────
         webviewView.webview.onDidReceiveMessage(
             async (message: WebviewMessage) => {
                 switch (message.type) {
@@ -75,20 +66,13 @@ export class FlowSaveWebviewProvider implements vscode.WebviewViewProvider {
         );
     }
 
-    /**
-     * Programmatically navigate the webview to a specific screen.
-     */
     public showScreen(screen: 'list' | 'restore'): void {
         this.postMessage({ type: 'navigate', screen });
     }
 
-    // ── Message helpers ─────────────────────────────────────────────────
-
     private postMessage(message: Record<string, unknown>): void {
         this.view?.webview.postMessage(message);
     }
-
-    // ── Handlers ────────────────────────────────────────────────────────
 
     private async handleCheckAuth(): Promise<void> {
         const authenticated = await this.authManager.isAuthenticated();
@@ -158,7 +142,6 @@ export class FlowSaveWebviewProvider implements vscode.WebviewViewProvider {
         try {
             await this.apiClient.deleteContext(id);
             this.postMessage({ type: 'contextDeleted', id });
-            // Refresh list
             await this.handleListContexts();
         } catch (error) {
             if (error instanceof AuthenticationError) {
@@ -172,11 +155,8 @@ export class FlowSaveWebviewProvider implements vscode.WebviewViewProvider {
 
     private async handleSaveContext(): Promise<void> {
         await captureContext(this.extensionContext, this.apiClient);
-        // After save, refresh the list
         await this.handleListContexts();
     }
-
-    // ── HTML generation ─────────────────────────────────────────────────
 
     private getHtmlForWebview(webview: vscode.Webview): string {
         const nonce = getNonce();
@@ -192,734 +172,663 @@ export class FlowSaveWebviewProvider implements vscode.WebviewViewProvider {
                    script-src 'nonce-${nonce}';" />
     <title>FlowSave</title>
     <style nonce="${nonce}">
-        /* ── Reset & Base ────────────────────────────────────────── */
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
         body {
-            font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif);
-            font-size: var(--vscode-font-size, 13px);
-            color: var(--vscode-editor-foreground);
-            background: var(--vscode-editor-background);
+            font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif);
+            font-size: 13px;
+            color: var(--vscode-foreground);
+            background: var(--vscode-sideBar-background, var(--vscode-editor-background));
             line-height: 1.5;
-            overflow-x: hidden;
         }
 
-        /* ── Screen container ────────────────────────────────────── */
-        .screen {
-            display: none;
-            opacity: 0;
-            transform: translateY(8px);
-            transition: opacity 0.25s ease, transform 0.25s ease;
-            padding: 16px 12px;
-            min-height: 100vh;
-        }
-        .screen.active {
-            display: block;
-        }
-        .screen.visible {
-            opacity: 1;
-            transform: translateY(0);
-        }
+        .screen { display: none; }
+        .screen.active { display: block; }
 
-        /* ── Header bar ──────────────────────────────────────────── */
+        /* ── Header ── */
         .header {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            margin-bottom: 16px;
-            padding-bottom: 12px;
-            border-bottom: 1px solid var(--vscode-widget-border, rgba(255,255,255,0.08));
+            padding: 8px 12px 7px;
+            border-bottom: 1px solid var(--vscode-sideBarSectionHeader-border, var(--vscode-widget-border));
+            background: var(--vscode-sideBarSectionHeader-background, transparent);
+            position: sticky;
+            top: 0;
+            z-index: 10;
         }
-        .header h1 {
-            font-size: 15px;
-            font-weight: 600;
-            letter-spacing: 0.3px;
-            display: flex;
-            align-items: center;
-            gap: 6px;
+        .header-title {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            opacity: 0.6;
         }
-        .header h1 .icon { font-size: 18px; }
-        .header-actions { display: flex; gap: 6px; }
+        .header-actions { display: flex; gap: 1px; }
+        .header-btn {
+            background: transparent;
+            border: none;
+            color: var(--vscode-foreground);
+            padding: 3px 7px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 11px;
+            font-family: inherit;
+            opacity: 0.55;
+        }
+        .header-btn:hover { opacity: 1; background: var(--vscode-toolbar-hoverBackground); }
+        .header-btn:focus-visible { outline: 1px solid var(--vscode-focusBorder); }
 
-        /* ── Buttons ─────────────────────────────────────────────── */
+        /* ── Buttons ── */
         button {
             font-family: inherit;
-            font-size: var(--vscode-font-size, 13px);
+            font-size: 12px;
             cursor: pointer;
+            border-radius: 2px;
             border: none;
-            border-radius: 4px;
-            padding: 6px 14px;
-            transition: background 0.15s ease, opacity 0.15s ease;
+            padding: 5px 12px;
+            transition: opacity 0.1s, background 0.1s;
         }
-        button:focus-visible {
-            outline: 1px solid var(--vscode-focusBorder);
-            outline-offset: 1px;
-        }
-        button:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
+        button:disabled { opacity: 0.4; cursor: not-allowed; }
+        button:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 1px; }
 
         .btn-primary {
             background: var(--vscode-button-background);
             color: var(--vscode-button-foreground);
         }
-        .btn-primary:hover:not(:disabled) {
-            background: var(--vscode-button-hoverBackground);
-        }
+        .btn-primary:hover:not(:disabled) { background: var(--vscode-button-hoverBackground); }
 
         .btn-secondary {
-            background: transparent;
-            color: var(--vscode-editor-foreground);
-            border: 1px solid var(--vscode-widget-border, rgba(255,255,255,0.12));
+            background: var(--vscode-button-secondaryBackground);
+            color: var(--vscode-button-secondaryForeground);
         }
-        .btn-secondary:hover:not(:disabled) {
-            background: rgba(255,255,255,0.06);
-        }
+        .btn-secondary:hover:not(:disabled) { background: var(--vscode-button-secondaryHoverBackground); }
 
         .btn-danger {
             background: transparent;
-            color: var(--vscode-errorForeground);
-            border: 1px solid var(--vscode-errorForeground);
-            font-size: 11px;
-            padding: 4px 10px;
+            color: var(--vscode-errorForeground, #f48771);
+            border: 1px solid currentColor;
+            opacity: 0.75;
         }
-        .btn-danger:hover:not(:disabled) {
-            background: rgba(244,67,54,0.12);
-        }
-
-        .btn-icon {
-            background: transparent;
-            color: var(--vscode-editor-foreground);
-            padding: 4px 8px;
-            font-size: 16px;
-            border-radius: 4px;
-        }
-        .btn-icon:hover:not(:disabled) {
-            background: rgba(255,255,255,0.08);
-        }
+        .btn-danger:hover:not(:disabled) { opacity: 1; }
 
         .btn-link {
-            background: none;
+            background: transparent;
             color: var(--vscode-textLink-foreground);
             padding: 0;
-            font-size: 12px;
             text-decoration: underline;
+            font-size: 12px;
+            border: none;
         }
-        .btn-link:hover { opacity: 0.8; }
 
-        .btn-full { width: 100%; }
-
-        /* ── Inputs ──────────────────────────────────────────────── */
-        .form-group {
-            margin-bottom: 14px;
+        /* ── Auth ── */
+        .auth-wrap { padding: 28px 18px; }
+        .auth-logo {
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1.2px;
+            opacity: 0.4;
+            margin-bottom: 18px;
         }
+        .auth-heading { font-size: 17px; font-weight: 600; margin-bottom: 4px; }
+        .auth-sub { font-size: 12px; opacity: 0.5; margin-bottom: 22px; }
+
+        .form-group { margin-bottom: 11px; }
         .form-group label {
             display: block;
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            opacity: 0.55;
             margin-bottom: 4px;
-            font-size: 12px;
-            color: var(--vscode-descriptionForeground);
-            font-weight: 500;
         }
-        input[type="text"],
         input[type="email"],
         input[type="password"] {
             width: 100%;
-            padding: 7px 10px;
+            padding: 6px 8px;
             font-family: inherit;
-            font-size: var(--vscode-font-size, 13px);
+            font-size: 13px;
             background: var(--vscode-input-background);
             color: var(--vscode-input-foreground);
-            border: 1px solid var(--vscode-input-border, rgba(255,255,255,0.12));
-            border-radius: 4px;
+            border: 1px solid var(--vscode-input-border, rgba(128,128,128,0.3));
+            border-radius: 2px;
             outline: none;
-            transition: border-color 0.15s ease;
         }
-        input:focus {
-            border-color: var(--vscode-focusBorder);
-        }
+        input:focus { border-color: var(--vscode-focusBorder); }
 
-        /* ── Cards ───────────────────────────────────────────────── */
-        .card {
-            background: var(--vscode-input-background);
-            border: 1px solid var(--vscode-widget-border, rgba(255,255,255,0.08));
-            border-radius: 6px;
-            padding: 14px;
-            margin-bottom: 10px;
-            transition: border-color 0.15s ease;
-        }
-        .card:hover {
-            border-color: var(--vscode-focusBorder);
-        }
-        .card-label {
-            font-weight: 600;
-            font-size: 13px;
-            margin-bottom: 4px;
-            word-break: break-word;
-        }
-        .card-time {
-            font-size: 11px;
-            color: var(--vscode-descriptionForeground);
-            margin-bottom: 8px;
-        }
-        .card-brief {
-            font-size: 12px;
-            font-style: italic;
-            color: var(--vscode-descriptionForeground);
-            margin-bottom: 12px;
-            display: -webkit-box;
-            -webkit-line-clamp: 2;
-            -webkit-box-orient: vertical;
-            overflow: hidden;
-        }
-        .card-actions {
-            display: flex;
-            gap: 8px;
-        }
+        .btn-block { width: 100%; margin-top: 6px; padding: 7px; }
+        .auth-footer { margin-top: 14px; font-size: 12px; opacity: 0.55; }
 
-        /* ── Auth screen ─────────────────────────────────────────── */
-        .auth-container {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            min-height: 60vh;
-            padding: 0 8px;
-        }
-        .auth-logo {
-            font-size: 36px;
-            margin-bottom: 8px;
-        }
-        .auth-title {
-            font-size: 18px;
-            font-weight: 700;
-            margin-bottom: 4px;
-        }
-        .auth-subtitle {
-            font-size: 12px;
-            color: var(--vscode-descriptionForeground);
-            margin-bottom: 24px;
-        }
-        .auth-form {
-            width: 100%;
-            max-width: 320px;
-        }
-        .auth-toggle {
-            text-align: center;
-            margin-top: 16px;
-            font-size: 12px;
-            color: var(--vscode-descriptionForeground);
-        }
-
-        /* ── Error / info messages ───────────────────────────────── */
         .msg-error {
-            color: var(--vscode-errorForeground);
             font-size: 12px;
+            color: var(--vscode-inputValidation-errorForeground, #f48771);
+            background: var(--vscode-inputValidation-errorBackground, rgba(244,71,71,0.08));
+            border: 1px solid var(--vscode-inputValidation-errorBorder, rgba(244,71,71,0.3));
+            border-radius: 2px;
+            padding: 6px 8px;
             margin-bottom: 10px;
-            padding: 8px 10px;
-            background: rgba(244,67,54,0.08);
-            border-radius: 4px;
             display: none;
         }
         .msg-error.visible { display: block; }
 
-        .msg-success {
-            color: #4caf50;
-            font-size: 12px;
-            margin-bottom: 10px;
-            padding: 8px 10px;
-            background: rgba(76,175,80,0.08);
-            border-radius: 4px;
-        }
-
-        /* ── Empty state ─────────────────────────────────────────── */
+        /* ── Context list ── */
         .empty-state {
+            padding: 44px 18px;
             text-align: center;
-            padding: 40px 16px;
-            color: var(--vscode-descriptionForeground);
         }
-        .empty-state .empty-icon { font-size: 40px; margin-bottom: 12px; }
-        .empty-state p { font-size: 12px; margin-bottom: 16px; }
+        .empty-label { font-size: 12px; opacity: 0.45; margin-bottom: 14px; }
 
-        /* ── Detail / Brief screen ───────────────────────────────── */
-        .detail-header {
+        /* ── Context card ── */
+        .ctx-card {
+            border-bottom: 1px solid var(--vscode-sideBarSectionHeader-border, rgba(128,128,128,0.15));
+        }
+        .ctx-card:last-child { border-bottom: none; }
+
+        .ctx-summary {
             display: flex;
-            align-items: center;
-            gap: 8px;
-            margin-bottom: 16px;
+            align-items: flex-start;
+            gap: 9px;
+            padding: 10px 12px;
+            cursor: pointer;
+            user-select: none;
         }
-        .detail-label {
-            font-size: 15px;
-            font-weight: 600;
-        }
-        .detail-time {
-            font-size: 11px;
-            color: var(--vscode-descriptionForeground);
-            margin-bottom: 16px;
-        }
-        .brief-section {
-            margin-bottom: 16px;
-        }
-        .brief-section h3 {
-            font-size: 12px;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            color: var(--vscode-descriptionForeground);
-            margin-bottom: 8px;
-        }
-        .brief-content {
-            background: var(--vscode-input-background);
-            border: 1px solid var(--vscode-widget-border, rgba(255,255,255,0.08));
-            border-radius: 6px;
-            padding: 14px;
-            font-size: 13px;
-            line-height: 1.6;
-            white-space: pre-wrap;
-            word-break: break-word;
-        }
-        .restore-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-            background: var(--vscode-badge-background, rgba(76,175,80,0.15));
-            color: #4caf50;
-            font-size: 12px;
-            font-weight: 500;
-            padding: 4px 10px;
-            border-radius: 12px;
-            margin-bottom: 16px;
+        .ctx-summary:hover { background: var(--vscode-list-hoverBackground); }
+        .ctx-card.open .ctx-summary {
+            background: var(--vscode-list-inactiveSelectionBackground, rgba(128,128,128,0.08));
         }
 
-        /* ── Spinner ─────────────────────────────────────────────── */
+        .ctx-bar {
+            width: 2px;
+            min-height: 38px;
+            border-radius: 1px;
+            background: var(--vscode-button-background);
+            flex-shrink: 0;
+            margin-top: 1px;
+            opacity: 0;
+            transition: opacity 0.15s;
+        }
+        .ctx-card:hover .ctx-bar,
+        .ctx-card.open .ctx-bar { opacity: 1; }
+
+        .ctx-body { flex: 1; min-width: 0; }
+        .ctx-label {
+            font-size: 13px;
+            font-weight: 600;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .ctx-meta {
+            font-size: 11px;
+            opacity: 0.45;
+            margin-top: 1px;
+        }
+        .ctx-preview {
+            font-size: 11px;
+            opacity: 0.55;
+            margin-top: 4px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .ctx-arrow {
+            font-size: 9px;
+            opacity: 0.3;
+            flex-shrink: 0;
+            margin-top: 3px;
+            transition: transform 0.15s;
+        }
+        .ctx-card.open .ctx-arrow { transform: rotate(90deg); opacity: 0.6; }
+
+        /* ── Expanded panel ── */
+        .ctx-panel {
+            display: none;
+            padding: 0 12px 14px 23px;
+            border-top: 1px solid rgba(128,128,128,0.1);
+        }
+        .ctx-card.open .ctx-panel { display: block; }
+
+        .section {
+            margin-top: 13px;
+        }
+        .section-heading {
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            opacity: 0.4;
+            margin-bottom: 6px;
+        }
+
+        /* Files */
+        .file-list { list-style: none; }
+        .file-row {
+            display: flex;
+            align-items: baseline;
+            gap: 7px;
+            padding: 2px 0;
+        }
+        .file-dot {
+            width: 4px;
+            height: 4px;
+            border-radius: 50%;
+            background: var(--vscode-button-background);
+            opacity: 0.5;
+            flex-shrink: 0;
+            margin-top: 1px;
+        }
+        .file-name {
+            font-size: 12px;
+            font-family: var(--vscode-editor-font-family, 'Consolas', monospace);
+            font-weight: 600;
+        }
+        .file-parent {
+            font-size: 11px;
+            opacity: 0.4;
+            font-family: var(--vscode-editor-font-family, 'Consolas', monospace);
+        }
+        .file-line-num {
+            font-size: 11px;
+            opacity: 0.35;
+            font-family: var(--vscode-editor-font-family, 'Consolas', monospace);
+            margin-left: auto;
+            flex-shrink: 0;
+        }
+
+        /* Brief */
+        .brief-block { font-size: 12px; line-height: 1.65; }
+        .brief-h {
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            opacity: 0.45;
+            margin-top: 9px;
+            margin-bottom: 2px;
+        }
+        .brief-h:first-child { margin-top: 0; }
+        .brief-p { opacity: 0.85; }
+
+        /* Terminal */
+        .terminal-block {
+            background: var(--vscode-terminal-background, var(--vscode-editor-background));
+            border: 1px solid rgba(128,128,128,0.15);
+            border-radius: 3px;
+            padding: 7px 9px;
+            font-size: 11px;
+            font-family: var(--vscode-editor-font-family, 'Consolas', monospace);
+            max-height: 110px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+            line-height: 1.5;
+            opacity: 0.8;
+        }
+
+        /* Diff */
+        .diff-block {
+            background: var(--vscode-editor-background);
+            border: 1px solid rgba(128,128,128,0.15);
+            border-radius: 3px;
+            padding: 7px 9px;
+            font-size: 11px;
+            font-family: var(--vscode-editor-font-family, 'Consolas', monospace);
+            max-height: 90px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+            line-height: 1.5;
+            opacity: 0.7;
+        }
+
+        .actions {
+            display: flex;
+            gap: 6px;
+            margin-top: 13px;
+        }
+
+        /* ── Spinner / Loading ── */
         .spinner {
             display: inline-block;
-            width: 16px;
-            height: 16px;
-            border: 2px solid var(--vscode-descriptionForeground);
+            width: 11px;
+            height: 11px;
+            border: 1.5px solid currentColor;
             border-top-color: transparent;
             border-radius: 50%;
-            animation: spin 0.6s linear infinite;
+            animation: spin 0.55s linear infinite;
             vertical-align: middle;
-            margin-right: 6px;
+            margin-right: 5px;
+            opacity: 0.5;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
 
-        .loading-overlay {
+        .loading-row {
+            padding: 20px 12px;
+            font-size: 12px;
+            opacity: 0.45;
             display: flex;
             align-items: center;
-            justify-content: center;
-            padding: 40px 0;
-            color: var(--vscode-descriptionForeground);
-            font-size: 12px;
         }
 
-        /* ── Scrollbar styling ───────────────────────────────────── */
-        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar { width: 5px; height: 5px; }
         ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 3px; }
-        ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); }
+        ::-webkit-scrollbar-thumb { background: rgba(128,128,128,0.25); border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(128,128,128,0.4); }
     </style>
 </head>
 <body>
 
-    <!-- ═══════════════ AUTH SCREEN ═══════════════ -->
-    <div id="screen-auth" class="screen">
-        <div class="auth-container">
-            <div class="auth-logo">🔖</div>
-            <div class="auth-title">FlowSave</div>
-            <div class="auth-subtitle">Save &amp; restore your dev context</div>
-
-            <form class="auth-form" id="auth-form">
-                <div id="auth-error" class="msg-error"></div>
-
-                <div class="form-group">
-                    <label for="auth-email">Email</label>
-                    <input type="email" id="auth-email" placeholder="you@example.com" required />
-                </div>
-
-                <div class="form-group">
-                    <label for="auth-password">Password</label>
-                    <input type="password" id="auth-password" placeholder="••••••••" required minlength="6" />
-                </div>
-
-                <button type="submit" class="btn-primary btn-full" id="auth-submit">
-                    Log In
-                </button>
-            </form>
-
-            <div class="auth-toggle">
-                <span id="auth-toggle-text">Don't have an account?</span>
-                <button type="button" class="btn-link" id="auth-toggle-btn">Register</button>
+<!-- AUTH -->
+<div id="screen-auth" class="screen">
+    <div class="auth-wrap">
+        <div class="auth-logo">FlowSave</div>
+        <div class="auth-heading" id="auth-heading">Sign in</div>
+        <div class="auth-sub">Save and restore your development context</div>
+        <form id="auth-form">
+            <div id="auth-error" class="msg-error"></div>
+            <div class="form-group">
+                <label for="auth-email">Email</label>
+                <input type="email" id="auth-email" placeholder="you@example.com" required />
             </div>
-        </div>
-    </div>
-
-    <!-- ═══════════════ LIST SCREEN ═══════════════ -->
-    <div id="screen-list" class="screen">
-        <div class="header">
-            <h1><span class="icon">🔖</span> FlowSave</h1>
-            <div class="header-actions">
-                <button class="btn-icon" id="btn-save" title="Save current context">💾</button>
-                <button class="btn-icon" id="btn-refresh" title="Refresh list">🔄</button>
-                <button class="btn-icon" id="btn-logout" title="Log out">⏻</button>
+            <div class="form-group">
+                <label for="auth-password">Password</label>
+                <input type="password" id="auth-password" placeholder="Password" required />
             </div>
-        </div>
-        <div id="list-error" class="msg-error"></div>
-        <div id="list-loading" class="loading-overlay" style="display:none;">
-            <span class="spinner"></span> Loading contexts…
-        </div>
-        <div id="context-list"></div>
-    </div>
-
-    <!-- ═══════════════ DETAIL SCREEN ═══════════════ -->
-    <div id="screen-detail" class="screen">
-        <div class="detail-header">
-            <button class="btn-icon" id="btn-back" title="Back to list">←</button>
-            <span class="detail-label" id="detail-label"></span>
-        </div>
-        <div class="detail-time" id="detail-time"></div>
-        <div id="detail-restore-badge"></div>
-
-        <div class="brief-section">
-            <h3>Re-entry Brief</h3>
-            <div class="brief-content" id="detail-brief"></div>
-        </div>
-
-        <div class="brief-section" id="detail-diff-section" style="display:none;">
-            <h3>Git Diff Summary</h3>
-            <div class="brief-content" id="detail-diff"></div>
-        </div>
-
-        <div class="brief-section" id="detail-files-section" style="display:none;">
-            <h3>Open Files</h3>
-            <div class="brief-content" id="detail-files"></div>
+            <button type="submit" class="btn-primary btn-block" id="auth-submit">Sign in</button>
+        </form>
+        <div class="auth-footer">
+            <span id="auth-toggle-text">Don't have an account?</span>
+            <button type="button" class="btn-link" id="auth-toggle-btn" style="margin-left:5px;">Register</button>
         </div>
     </div>
+</div>
 
-    <!-- ═══════════════ SCRIPT ═══════════════ -->
-    <script nonce="${nonce}">
-    (function() {
-        const vscode = acquireVsCodeApi();
+<!-- LIST -->
+<div id="screen-list" class="screen">
+    <div class="header">
+        <span class="header-title">FlowSave</span>
+        <div class="header-actions">
+            <button class="header-btn" id="btn-save">Save</button>
+            <button class="header-btn" id="btn-refresh">Refresh</button>
+            <button class="header-btn" id="btn-logout">Logout</button>
+        </div>
+    </div>
+    <div id="list-error" class="msg-error" style="margin:8px 12px;"></div>
+    <div id="context-list"></div>
+</div>
 
-        // ── State ───────────────────────────────────────────────────
-        let authMode = 'login'; // 'login' | 'register'
-        let contexts = [];
-        let currentSnapshot = null;
+<script nonce="${nonce}">
+(function() {
+    const vscode = acquireVsCodeApi();
+    let authMode = 'login';
 
-        // ── DOM refs ────────────────────────────────────────────────
-        const screenAuth   = document.getElementById('screen-auth');
-        const screenList   = document.getElementById('screen-list');
-        const screenDetail = document.getElementById('screen-detail');
-        const screens = [screenAuth, screenList, screenDetail];
+    const screenAuth    = document.getElementById('screen-auth');
+    const screenList    = document.getElementById('screen-list');
+    const authForm      = document.getElementById('auth-form');
+    const authEmail     = document.getElementById('auth-email');
+    const authPassword  = document.getElementById('auth-password');
+    const authSubmit    = document.getElementById('auth-submit');
+    const authError     = document.getElementById('auth-error');
+    const authHeading   = document.getElementById('auth-heading');
+    const authToggleBtn = document.getElementById('auth-toggle-btn');
+    const authToggleText= document.getElementById('auth-toggle-text');
+    const contextList   = document.getElementById('context-list');
+    const listError     = document.getElementById('list-error');
 
-        const authForm      = document.getElementById('auth-form');
-        const authEmail     = document.getElementById('auth-email');
-        const authPassword  = document.getElementById('auth-password');
-        const authSubmit    = document.getElementById('auth-submit');
-        const authError     = document.getElementById('auth-error');
-        const authToggleBtn = document.getElementById('auth-toggle-btn');
-        const authToggleText= document.getElementById('auth-toggle-text');
+    function showScreen(id) {
+        [screenAuth, screenList].forEach(s => s.classList.remove('active'));
+        document.getElementById('screen-' + id).classList.add('active');
+    }
 
-        const contextList = document.getElementById('context-list');
-        const listLoading = document.getElementById('list-loading');
-        const listError   = document.getElementById('list-error');
+    // Auth toggle
+    authToggleBtn.addEventListener('click', () => {
+        authMode = authMode === 'login' ? 'register' : 'login';
+        authHeading.textContent    = authMode === 'login' ? 'Sign in' : 'Create account';
+        authSubmit.textContent     = authMode === 'login' ? 'Sign in' : 'Create account';
+        authToggleBtn.textContent  = authMode === 'login' ? 'Register' : 'Sign in';
+        authToggleText.textContent = authMode === 'login' ? "Don't have an account?" : 'Already have an account?';
+        hideErr(authError);
+    });
 
-        const detailLabel = document.getElementById('detail-label');
-        const detailTime  = document.getElementById('detail-time');
-        const detailBrief = document.getElementById('detail-brief');
-        const detailDiff  = document.getElementById('detail-diff');
-        const detailDiffSection = document.getElementById('detail-diff-section');
-        const detailFiles = document.getElementById('detail-files');
-        const detailFilesSection = document.getElementById('detail-files-section');
-        const detailRestoreBadge = document.getElementById('detail-restore-badge');
+    authForm.addEventListener('submit', e => {
+        e.preventDefault();
+        const email    = authEmail.value.trim();
+        const password = authPassword.value;
+        if (!email || !password) { return; }
+        setLoading(authSubmit, true);
+        hideErr(authError);
+        vscode.postMessage({ type: authMode, email, password });
+    });
 
-        // ── Screen management ───────────────────────────────────────
-        function showScreen(id) {
-            screens.forEach(s => {
-                s.classList.remove('active', 'visible');
-            });
-            const target = document.getElementById('screen-' + id);
-            target.classList.add('active');
-            // trigger reflow for animation
-            void target.offsetWidth;
-            requestAnimationFrame(() => target.classList.add('visible'));
+    document.getElementById('btn-save').addEventListener('click', () => vscode.postMessage({ type: 'saveContext' }));
+    document.getElementById('btn-refresh').addEventListener('click', loadContexts);
+    document.getElementById('btn-logout').addEventListener('click', () => vscode.postMessage({ type: 'logout' }));
+
+    // ── Render contexts ──────────────────────────────────────────
+    function renderContexts(list) {
+        contextList.innerHTML = '';
+        hideErr(listError);
+
+        if (!list || list.length === 0) {
+            contextList.innerHTML =
+                '<div class="empty-state">' +
+                    '<div class="empty-label">No saved contexts yet.</div>' +
+                    '<button class="btn-primary" id="btn-save-empty">Save current context</button>' +
+                '</div>';
+            const b = document.getElementById('btn-save-empty');
+            if (b) { b.addEventListener('click', () => vscode.postMessage({ type: 'saveContext' })); }
+            return;
         }
 
-        // ── Auth toggle ─────────────────────────────────────────────
-        authToggleBtn.addEventListener('click', () => {
-            authMode = authMode === 'login' ? 'register' : 'login';
-            authSubmit.textContent = authMode === 'login' ? 'Log In' : 'Create Account';
-            authToggleBtn.textContent = authMode === 'login' ? 'Register' : 'Log In';
-            authToggleText.textContent = authMode === 'login'
-                ? "Don't have an account?"
-                : 'Already have an account?';
-            hideError(authError);
-        });
+        list.forEach(ctx => {
+            const card = document.createElement('div');
+            card.className = 'ctx-card';
 
-        // ── Auth form submit ────────────────────────────────────────
-        authForm.addEventListener('submit', (e) => {
-            e.preventDefault();
-            const email = authEmail.value.trim();
-            const password = authPassword.value;
-            if (!email || !password) return;
-
-            setLoading(authSubmit, true);
-            hideError(authError);
-
-            vscode.postMessage({
-                type: authMode,
-                email,
-                password,
-            });
-        });
-
-        // ── List actions ────────────────────────────────────────────
-        document.getElementById('btn-save').addEventListener('click', () => {
-            vscode.postMessage({ type: 'saveContext' });
-        });
-        document.getElementById('btn-refresh').addEventListener('click', () => {
-            loadContexts();
-        });
-        document.getElementById('btn-logout').addEventListener('click', () => {
-            vscode.postMessage({ type: 'logout' });
-        });
-        document.getElementById('btn-back').addEventListener('click', () => {
-            showScreen('list');
-        });
-
-        // ── Render context cards ────────────────────────────────────
-        function renderContexts(list) {
-            contexts = list;
-            contextList.innerHTML = '';
-            listLoading.style.display = 'none';
-
-            if (!list || list.length === 0) {
-                contextList.innerHTML =
-                    '<div class="empty-state">' +
-                        '<div class="empty-icon">📂</div>' +
-                        '<p>No saved contexts yet.<br/>Click 💾 to save your first context.</p>' +
-                        '<button class="btn-primary" id="btn-empty-save">Save Context</button>' +
-                    '</div>';
-                const emptyBtn = document.getElementById('btn-empty-save');
-                if (emptyBtn) {
-                    emptyBtn.addEventListener('click', () => {
-                        vscode.postMessage({ type: 'saveContext' });
-                    });
-                }
-                return;
-            }
-
-            list.forEach((ctx) => {
-                const card = document.createElement('div');
-                card.className = 'card';
-
-                const briefPreview = ctx.brief
-                    ? ctx.brief.split('\\n')[0].substring(0, 120)
-                    : 'No brief available';
-
-                card.innerHTML =
-                    '<div class="card-label">' + escapeHtml(ctx.label) + '</div>' +
-                    '<div class="card-time">' + formatTime(ctx.timestamp) + '</div>' +
-                    '<div class="card-brief">' + escapeHtml(briefPreview) + '</div>' +
-                    '<div class="card-actions">' +
-                        '<button class="btn-primary btn-restore" data-id="' + escapeAttr(ctx.id) + '">Restore</button>' +
-                        '<button class="btn-danger btn-delete" data-id="' + escapeAttr(ctx.id) + '">Delete</button>' +
-                    '</div>';
-
-                contextList.appendChild(card);
-            });
-
-            // Attach event listeners
-            contextList.querySelectorAll('.btn-restore').forEach(btn => {
-                btn.addEventListener('click', () => {
-                    const id = btn.getAttribute('data-id');
-                    btn.disabled = true;
-                    btn.textContent = '⏳';
-                    vscode.postMessage({ type: 'restoreContext', id });
-                });
-            });
-            contextList.querySelectorAll('.btn-delete').forEach(btn => {
-                btn.addEventListener('click', () => {
-                    const id = btn.getAttribute('data-id');
-                    btn.disabled = true;
-                    btn.textContent = '…';
-                    vscode.postMessage({ type: 'deleteContext', id });
-                });
-            });
-        }
-
-        // ── Show detail screen ──────────────────────────────────────
-        function showDetail(snapshot, restored, skipped) {
-            currentSnapshot = snapshot;
-            detailLabel.textContent = snapshot.label;
-            detailTime.textContent = formatTime(snapshot.timestamp);
-            detailBrief.textContent = snapshot.brief || 'No re-entry brief generated.';
-
-            // Restore badge
-            if (restored !== undefined) {
-                detailRestoreBadge.innerHTML =
-                    '<div class="restore-badge">✓ ' + restored + ' file(s) restored' +
-                    (skipped && skipped.length > 0 ? ', ' + skipped.length + ' skipped' : '') +
-                    '</div>';
-            } else {
-                detailRestoreBadge.innerHTML = '';
-            }
-
-            // Git diff
-            if (snapshot.gitDiff) {
-                detailDiffSection.style.display = 'block';
-                detailDiff.textContent = snapshot.gitDiff.substring(0, 3000);
-            } else {
-                detailDiffSection.style.display = 'none';
-            }
-
-            // Open files
+            // ── Compute data ──
+            let fileCount = 0, fileRows = '';
             try {
-                const files = JSON.parse(snapshot.openFiles);
-                if (files && files.length > 0) {
-                    detailFilesSection.style.display = 'block';
-                    detailFiles.textContent = files.map(f =>
-                        f.path.split('/').pop() + ' (line ' + f.line + ')'
-                    ).join('\\n');
-                } else {
-                    detailFilesSection.style.display = 'none';
-                }
-            } catch(e) {
-                detailFilesSection.style.display = 'none';
-            }
+                const files = JSON.parse(ctx.openFiles || '[]');
+                fileCount = files.length;
+                fileRows = files.map(f => {
+                    const segs = f.path.split('/');
+                    const name   = segs.pop() || f.path;
+                    const parent = segs.pop() || '';
+                    const lineNum = f.line ? 'L' + (f.line + 1) : '';
+                    return '<li class="file-row">' +
+                        '<span class="file-dot"></span>' +
+                        '<span class="file-name">' + esc(name) + '</span>' +
+                        (parent ? '<span class="file-parent">' + esc(parent) + '</span>' : '') +
+                        (lineNum ? '<span class="file-line-num">' + lineNum + '</span>' : '') +
+                    '</li>';
+                }).join('');
+            } catch(e) {}
 
-            showScreen('detail');
-        }
-
-        // ── Load contexts ───────────────────────────────────────────
-        function loadContexts() {
-            hideError(listError);
-            contextList.innerHTML = '';
-            listLoading.style.display = 'flex';
-            vscode.postMessage({ type: 'listContexts' });
-        }
-
-        // ── Utilities ───────────────────────────────────────────────
-        function escapeHtml(str) {
-            const div = document.createElement('div');
-            div.textContent = str;
-            return div.innerHTML;
-        }
-        function escapeAttr(str) {
-            return str.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-        }
-        function formatTime(iso) {
-            try {
-                const d = new Date(iso);
-                return d.toLocaleDateString(undefined, {
-                    month: 'short', day: 'numeric', year: 'numeric'
-                }) + ' at ' + d.toLocaleTimeString(undefined, {
-                    hour: '2-digit', minute: '2-digit'
-                });
-            } catch(e) {
-                return iso;
-            }
-        }
-        function setLoading(btn, loading) {
-            btn.disabled = loading;
-            if (loading) {
-                btn.dataset.originalText = btn.textContent;
-                btn.innerHTML = '<span class="spinner"></span> ' + btn.dataset.originalText;
-            } else {
-                btn.textContent = btn.dataset.originalText || btn.textContent;
-            }
-        }
-        function showError(el, msg) {
-            el.textContent = msg;
-            el.classList.add('visible');
-        }
-        function hideError(el) {
-            el.textContent = '';
-            el.classList.remove('visible');
-        }
-
-        // ── Handle messages from extension ──────────────────────────
-        window.addEventListener('message', (event) => {
-            const msg = event.data;
-
-            switch(msg.type) {
-                case 'authStatus':
-                    if (msg.authenticated) {
-                        showScreen('list');
-                        loadContexts();
+            // Brief: parse **Section:** markers
+            let briefHtml = '';
+            if (ctx.reentryBrief) {
+                // Split into lines; detect **Header:** lines
+                const rawBrief = ctx.reentryBrief.replace(/\\n/g, '\\n');
+                const lines = rawBrief.split(/\\n|\\\\n/);
+                let html = '';
+                lines.forEach(line => {
+                    const trimmed = line.trim();
+                    if (!trimmed) { return; }
+                    const hMatch = trimmed.match(/^\\*\\*(.+?)\\*\\*:?\\s*(.*)/);
+                    if (hMatch) {
+                        html += '<div class="brief-h">' + esc(hMatch[1]) + '</div>';
+                        if (hMatch[2]) { html += '<div class="brief-p">' + esc(hMatch[2]) + '</div>'; }
                     } else {
-                        showScreen('auth');
+                        html += '<div class="brief-p">' + esc(trimmed) + '</div>';
                     }
-                    break;
-
-                case 'authSuccess':
-                    setLoading(authSubmit, false);
-                    hideError(authError);
-                    authForm.reset();
-                    showScreen('list');
-                    loadContexts();
-                    break;
-
-                case 'authError':
-                    setLoading(authSubmit, false);
-                    showError(authError, msg.message);
-                    break;
-
-                case 'loggedOut':
-                    showScreen('auth');
-                    break;
-
-                case 'contextsList':
-                    renderContexts(msg.contexts);
-                    break;
-
-                case 'contextRestored':
-                    showDetail(msg.snapshot, msg.restored, msg.skipped);
-                    break;
-
-                case 'contextDeleted':
-                    // list will be refreshed by extension
-                    break;
-
-                case 'error':
-                    listLoading.style.display = 'none';
-                    showError(listError, msg.message);
-                    break;
-
-                case 'navigate':
-                    if (msg.screen === 'list') {
-                        showScreen('list');
-                        loadContexts();
-                    } else if (msg.screen === 'restore') {
-                        showScreen('list');
-                        loadContexts();
-                    }
-                    break;
+                });
+                briefHtml = html;
             }
+
+            // Preview: strip markdown
+            const previewText = ctx.reentryBrief
+                ? ctx.reentryBrief.replace(/\\*\\*[^*]+\\*\\*/g, '').replace(/\\n|\\\\n/g, ' ').trim().substring(0, 85)
+                : '';
+
+            // Terminal section
+            const terminalHtml = ctx.terminalHistory
+                ? '<div class="section">' +
+                    '<div class="section-heading">Terminal commands</div>' +
+                    '<div class="terminal-block">' + esc(ctx.terminalHistory) + '</div>' +
+                  '</div>'
+                : '';
+
+            // Diff section
+            const diffHtml = ctx.gitDiff
+                ? '<div class="section">' +
+                    '<div class="section-heading">Git diff</div>' +
+                    '<div class="diff-block">' + esc(ctx.gitDiff.substring(0, 500)) + (ctx.gitDiff.length > 500 ? '\\n...' : '') + '</div>' +
+                  '</div>'
+                : '';
+
+            card.innerHTML =
+                '<div class="ctx-summary">' +
+                    '<div class="ctx-bar"></div>' +
+                    '<div class="ctx-body">' +
+                        '<div class="ctx-label">' + esc(ctx.label) + '</div>' +
+                        '<div class="ctx-meta">' + fmtTime(ctx.createdAt) + '  &middot;  ' + fileCount + ' file' + (fileCount !== 1 ? 's' : '') + '</div>' +
+                        (previewText ? '<div class="ctx-preview">' + esc(previewText) + '</div>' : '') +
+                    '</div>' +
+                    '<div class="ctx-arrow">&#9658;</div>' +
+                '</div>' +
+                '<div class="ctx-panel">' +
+                    // Open files
+                    '<div class="section">' +
+                        '<div class="section-heading">Open files</div>' +
+                        '<ul class="file-list">' + fileRows + '</ul>' +
+                    '</div>' +
+                    // Re-entry brief
+                    (briefHtml ? '<div class="section"><div class="section-heading">Re-entry brief</div><div class="brief-block">' + briefHtml + '</div></div>' : '') +
+                    // Terminal
+                    terminalHtml +
+                    // Diff
+                    diffHtml +
+                    // Actions
+                    '<div class="actions">' +
+                        '<button class="btn-primary btn-restore" data-id="' + ctx.id + '">Restore</button>' +
+                        '<button class="btn-danger btn-delete" data-id="' + ctx.id + '">Delete</button>' +
+                    '</div>' +
+                '</div>';
+
+            // Toggle open/close
+            card.querySelector('.ctx-summary').addEventListener('click', () => {
+                const isOpen = card.classList.contains('open');
+                document.querySelectorAll('.ctx-card.open').forEach(c => c.classList.remove('open'));
+                if (!isOpen) { card.classList.add('open'); }
+            });
+
+            contextList.appendChild(card);
         });
 
-        // ── Init: check auth status on load ─────────────────────────
-        vscode.postMessage({ type: 'checkAuth' });
+        // Restore buttons
+        contextList.querySelectorAll('.btn-restore').forEach(btn => {
+            btn.addEventListener('click', e => {
+                e.stopPropagation();
+                btn.disabled = true;
+                btn.innerHTML = '<span class="spinner"></span>Restoring...';
+                vscode.postMessage({ type: 'restoreContext', id: btn.getAttribute('data-id') });
+            });
+        });
+        // Delete buttons
+        contextList.querySelectorAll('.btn-delete').forEach(btn => {
+            btn.addEventListener('click', e => {
+                e.stopPropagation();
+                btn.disabled = true;
+                btn.textContent = 'Deleting...';
+                vscode.postMessage({ type: 'deleteContext', id: btn.getAttribute('data-id') });
+            });
+        });
+    }
 
-    })();
-    </script>
+    function loadContexts() {
+        contextList.innerHTML = '<div class="loading-row"><span class="spinner"></span>Loading contexts...</div>';
+        hideErr(listError);
+        vscode.postMessage({ type: 'listContexts' });
+    }
+
+    // ── Utilities ────────────────────────────────────────────────
+    function esc(str) {
+        if (!str) { return ''; }
+        const d = document.createElement('div');
+        d.textContent = str;
+        return d.innerHTML;
+    }
+    function fmtTime(iso) {
+        try {
+            const d = new Date(iso);
+            return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) +
+                   ' at ' +
+                   d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+        } catch(e) { return iso || ''; }
+    }
+    function setLoading(btn, on) {
+        btn.disabled = on;
+        if (on) {
+            btn.dataset.txt = btn.textContent;
+            btn.innerHTML = '<span class="spinner"></span>' + btn.dataset.txt;
+        } else {
+            btn.textContent = btn.dataset.txt || btn.textContent;
+        }
+    }
+    function showErr(el, msg) { if (!el) { return; } el.textContent = msg; el.classList.add('visible'); }
+    function hideErr(el) { if (!el) { return; } el.textContent = ''; el.classList.remove('visible'); }
+
+    // ── Message handler ──────────────────────────────────────────
+    window.addEventListener('message', ev => {
+        const msg = ev.data;
+        switch (msg.type) {
+            case 'authStatus':
+                if (msg.authenticated) { showScreen('list'); loadContexts(); }
+                else { showScreen('auth'); }
+                break;
+            case 'authSuccess':
+                setLoading(authSubmit, false);
+                hideErr(authError);
+                authForm.reset();
+                showScreen('list');
+                loadContexts();
+                break;
+            case 'authError':
+                setLoading(authSubmit, false);
+                showErr(authError, msg.message);
+                break;
+            case 'loggedOut':
+                showScreen('auth');
+                break;
+            case 'contextsList':
+                renderContexts(msg.contexts);
+                break;
+            case 'contextRestored':
+                loadContexts();
+                break;
+            case 'error':
+                contextList.innerHTML = '';
+                showErr(listError, msg.message);
+                break;
+        }
+    });
+
+    vscode.postMessage({ type: 'checkAuth' });
+})();
+</script>
 </body>
 </html>`;
     }
 }
 
-// ── Message types ───────────────────────────────────────────────────────
-
 interface WebviewMessage {
     type: string;
+    id?: string;
     email?: string;
     password?: string;
-    id?: string;
-    [key: string]: unknown;
 }
-
-// ── Utilities ───────────────────────────────────────────────────────────
 
 function getNonce(): string {
     let text = '';

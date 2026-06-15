@@ -18,22 +18,44 @@ export async function captureContext(
     apiClient: ApiClient
 ): Promise<void> {
     // ── 1. Ask user for a label ─────────────────────────────────────────
-    const label = await vscode.window.showInputBox({
-        prompt: 'What are you working on?',
+    const inputLabel = await vscode.window.showInputBox({
+        prompt: 'What are you working on? (Optional - press Enter to skip)',
         placeHolder: 'e.g. Fixing auth middleware bug',
         ignoreFocusOut: true,
     });
 
-    if (!label) {
-        return; // user cancelled
+    if (inputLabel === undefined) {
+        return; // user cancelled (pressed Escape)
     }
+    
+    const label = inputLabel.trim() || 'Untitled Context';
 
     try {
-        // ── 2. Capture open files ───────────────────────────────────────
-        const openFiles: OpenFileInfo[] = vscode.window.visibleTextEditors.map((editor) => ({
-            path: editor.document.fileName,
-            line: editor.selection.active.line,
-        }));
+        // ── 2. Capture ALL open tabs (not just visible editors) ──────────────
+        // vscode.window.visibleTextEditors only returns editors currently on screen.
+        // vscode.window.tabGroups.all gives us every open tab across all editor groups.
+        const openFiles: OpenFileInfo[] = [];
+        const seenPaths = new Set<string>();
+
+        for (const group of vscode.window.tabGroups.all) {
+            for (const tab of group.tabs) {
+                const input = tab.input as { uri?: vscode.Uri };
+                if (input?.uri && input.uri.scheme === 'file') {
+                    const filePath = input.uri.fsPath;
+                    if (!seenPaths.has(filePath)) {
+                        seenPaths.add(filePath);
+                        // Try to get current cursor line from visible editors
+                        const visibleEditor = vscode.window.visibleTextEditors.find(
+                            e => e.document.fileName === filePath
+                        );
+                        openFiles.push({
+                            path: filePath,
+                            line: visibleEditor ? visibleEditor.selection.active.line : 0,
+                        });
+                    }
+                }
+            }
+        }
 
         // ── 3. Capture git diff ─────────────────────────────────────────
         let gitDiff: string | null = null;
@@ -57,14 +79,36 @@ export async function captureContext(
         // ── 4. Capture terminal history ─────────────────────────────────
         let terminalHistory: string | null = null;
         try {
-            const historyPath = path.join(os.tmpdir(), 'flowsave_history.txt');
-            if (fs.existsSync(historyPath)) {
-                const raw = fs.readFileSync(historyPath, 'utf-8');
-                const lines = raw.split('\n');
-                terminalHistory = lines.slice(-50).join('\n') || null;
+            const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
+            const flowsaveHistory = '/tmp/flowsave_global_history.txt';
+            const zshHistory = path.join(os.homedir(), '.zsh_history');
+
+            if (fs.existsSync(flowsaveHistory) && workspaceFolder) {
+                const raw = fs.readFileSync(flowsaveHistory, 'utf-8');
+                const lines = raw.split('\n').filter(l => l.trim().length > 0);
+                // Filter lines that belong to this workspace or its subdirectories
+                const workspaceLines = lines
+                    .filter(l => l.startsWith(workspaceFolder))
+                    .map(l => {
+                        const parts = l.split('|:|');
+                        return parts.length > 1 ? parts.slice(1).join('|:|').trim() : '';
+                    })
+                    .filter(l => l.length > 0);
+                if (workspaceLines.length > 0) {
+                    terminalHistory = workspaceLines.slice(-50).join('\n');
+                }
             }
-        } catch {
-            // History file not available — continue without it
+
+            // Fallback: use recent zsh history (global, less accurate)
+            if (!terminalHistory && fs.existsSync(zshHistory)) {
+                const raw = fs.readFileSync(zshHistory, 'utf-8');
+                const lines = raw.split('\n').filter(l => l.trim().length > 0);
+                // Strip zsh extended history timestamps: ": 1234567890:0;"
+                terminalHistory = '[Note: project-specific tracking not set up. Recent global history:]\n' +
+                    lines.slice(-30).map(l => l.replace(/^: \d+:\d+;/, '').trim()).filter(l => l).join('\n');
+            }
+        } catch (e) {
+            console.error('Error reading terminal history:', e);
         }
 
         // ── 5. Build timestamp ──────────────────────────────────────────

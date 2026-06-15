@@ -21,17 +21,17 @@ import java.util.stream.Collectors;
 public class GeminiService {
 
     private static final Logger logger = LoggerFactory.getLogger(GeminiService.class);
-    private static final String GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s";
-    private static final int MAX_DIFF_LENGTH = 2000;
-    private static final int MAX_TERMINAL_COMMANDS = 10;
+    private static final String GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
+    private static final int MAX_DIFF_LENGTH = 3000;
+    private static final int MAX_TERMINAL_COMMANDS = 30;
 
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
 
-    @Value("${flowsave.gemini.api-key}")
+    @Value("${flowsave.groq.api-key}")
     private String apiKey;
 
-    @Value("${flowsave.gemini.model}")
+    @Value("${flowsave.groq.model}")
     private String model;
 
     public GeminiService() {
@@ -50,56 +50,61 @@ public class GeminiService {
 
             String prompt = buildPrompt(label, openFiles, truncatedDiff, lastCommands, timestamp);
 
-            String url = String.format(GEMINI_API_URL, model, apiKey);
-
-            Map<String, Object> requestBody = Map.of(
-                    "contents", List.of(
-                            Map.of("parts", List.of(
-                                    Map.of("text", prompt)
-                            ))
-                    )
-            );
-
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.setBearerAuth(apiKey);
+
+            Map<String, Object> requestBody = Map.of(
+                    "model", model,
+                    "messages", List.of(
+                            Map.of("role", "user", "content", prompt)
+                    ),
+                    "temperature", 0.3,
+                    "max_tokens", 500
+            );
 
             HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
-            ResponseEntity<String> response = restTemplate.postForEntity(url, entity, String.class);
+            ResponseEntity<String> response = restTemplate.postForEntity(GROQ_API_URL, entity, String.class);
 
             if (response.getBody() != null) {
                 JsonNode root = objectMapper.readTree(response.getBody());
-                JsonNode textNode = root
-                        .path("candidates").path(0)
-                        .path("content").path("parts").path(0)
-                        .path("text");
+                JsonNode contentNode = root
+                        .path("choices").path(0)
+                        .path("message").path("content");
 
-                if (!textNode.isMissingNode()) {
-                    return textNode.asText();
+                if (!contentNode.isMissingNode()) {
+                    return contentNode.asText();
                 }
             }
 
-            logger.warn("Gemini API returned an unexpected response format");
+            logger.warn("Groq API returned an unexpected response format");
             return fallbackBrief();
 
         } catch (Exception e) {
-            logger.error("Failed to generate re-entry brief from Gemini API: {}", e.getMessage(), e);
+            logger.error("Failed to generate re-entry brief from Groq API: {}", e.getMessage(), e);
             return fallbackBrief();
         }
     }
 
     private String buildPrompt(String label, String openFiles, String truncatedDiff,
                                 String lastCommands, String timestamp) {
-        return "You are a developer assistant. A developer is saving their working context " +
-                "before switching tasks. Based on the snapshot below, write a concise re-entry brief " +
-                "(4-5 lines max) that tells them exactly what they were doing, what files and lines " +
-                "they were focused on, what changes they had made, and what the logical next step is " +
-                "when they return. Be specific. Reference actual file names and line numbers. " +
-                "Be direct, no fluff.\n\n" +
-                "Label: " + (label != null ? label : "N/A") + "\n" +
-                "Open files: " + (openFiles != null ? openFiles : "N/A") + "\n" +
-                "Git diff summary: " + (truncatedDiff != null ? truncatedDiff : "N/A") + "\n" +
-                "Recent terminal commands: " + (lastCommands != null ? lastCommands : "N/A") + "\n" +
-                "Saved at: " + (timestamp != null ? timestamp : "N/A");
+        StringBuilder sb = new StringBuilder();
+        sb.append("You are a senior developer assistant. A developer just saved their work context before switching tasks.\n");
+        sb.append("Write a re-entry brief with EXACTLY these 3 sections (use these headers):\n\n");
+        sb.append("**What you were working on:**\n");
+        sb.append("1-2 sentences describing the specific task, referencing actual file names.\n\n");
+        sb.append("**Terminal activity:**\n");
+        sb.append("1-2 sentences summarizing what the terminal commands indicate they were DOING (e.g. starting servers, running tests, installing packages). Do NOT just list commands - interpret what they mean.\n\n");
+        sb.append("**Next step when you return:**\n");
+        sb.append("1 specific, actionable next step.\n\n");
+        sb.append("Be specific. Reference actual file names, line numbers, and command results. No fluff.\n\n");
+        sb.append("--- CONTEXT SNAPSHOT ---\n");
+        sb.append("Label: ").append(label != null ? label : "N/A").append("\n");
+        sb.append("Open files (path, cursor line): ").append(openFiles != null ? openFiles : "N/A").append("\n");
+        sb.append("Git diff: ").append(truncatedDiff != null ? truncatedDiff : "No changes").append("\n");
+        sb.append("Recent terminal commands:\n").append(lastCommands != null ? lastCommands : "None recorded").append("\n");
+        sb.append("Saved at: ").append(timestamp != null ? timestamp : "N/A").append("\n");
+        return sb.toString();
     }
 
     private String truncateDiff(String gitDiff) {

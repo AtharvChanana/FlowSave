@@ -1,9 +1,16 @@
 import * as http from 'http';
 import * as https from 'https';
 import { URL } from 'url';
+import * as vscode from 'vscode';
 import { AuthManager } from './authManager';
 
-const BACKEND_URL = process.env.FLOWSAVE_BACKEND_URL || 'http://localhost:8080';
+const PRODUCTION_URL = 'https://flowsave-backend.onrender.com';
+
+function getBackendUrl(): string {
+    const config = vscode.workspace.getConfiguration('flowsave');
+    const override = config.get<string>('backendUrl');
+    return (override && override.trim()) ? override.trim() : PRODUCTION_URL;
+}
 
 // ── Interfaces ──────────────────────────────────────────────────────────
 
@@ -26,8 +33,8 @@ export interface ContextSnapshot {
     openFiles: string; // JSON-stringified OpenFileInfo[]
     gitDiff: string | null;
     terminalHistory: string | null;
-    timestamp: string;
-    brief: string; // AI-generated re-entry brief
+    createdAt: string;
+    reentryBrief: string | null;
 }
 
 // ── Error types ─────────────────────────────────────────────────────────
@@ -61,7 +68,7 @@ export class ApiClient {
         path: string,
         body?: Record<string, unknown>
     ): Promise<T> {
-        const url = new URL(path, BACKEND_URL);
+        const url = new URL(path, getBackendUrl());
         const isHttps = url.protocol === 'https:';
         const transport = isHttps ? https : http;
 
