@@ -46,7 +46,7 @@ public class ContextSnapshot {
     @Column(nullable = false)
     private boolean deleted = false;
 
-    @Column(name = "auto_saved", nullable = false)
+    @Column(name = "auto_saved", nullable = false, columnDefinition = "boolean DEFAULT false")
     private boolean autoSaved = false;
 
     @PrePersist
