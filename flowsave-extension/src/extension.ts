@@ -50,58 +50,79 @@ export function activate(context: vscode.ExtensionContext) {
     // ── Deep-link URI handler: vscode://AtharvChanana.flowsave/restore?token=... ──
     const uriHandler = vscode.window.registerUriHandler({
         async handleUri(uri: vscode.Uri) {
-            if (uri.path !== '/restore') { return; }
+            // Step 1: confirm the handler fires
+            vscode.window.showInformationMessage(`FlowSave: Opening shared context...`);
+
+            if (uri.path !== '/restore') {
+                vscode.window.showWarningMessage(`FlowSave: Unknown URI path "${uri.path}"`);
+                return;
+            }
 
             const params = new URLSearchParams(uri.query);
             const token = params.get('token');
-            if (!token) { return; }
 
-            vscode.window.showInformationMessage('FlowSave: Fetching shared context...');
+            if (!token) {
+                vscode.window.showErrorMessage('FlowSave: Share link is missing token.');
+                return;
+            }
 
+            // Step 2: fetch context from backend
+            let data: { label: string; openFiles: string; reentryBrief: string };
             try {
-                const data = await apiClient.getSharedContext(token);
-
-                // Parse open files
-                let openFiles: Array<{ path: string; line: number }> = [];
-                try { openFiles = JSON.parse(data.openFiles); } catch { /* ignore */ }
-
-                if (openFiles.length === 0) {
-                    vscode.window.showWarningMessage('FlowSave: No files to restore in this shared context.');
-                    return;
-                }
-
-                // Open all files
-                let restoredCount = 0;
-                for (const file of openFiles) {
-                    try {
-                        const uri = vscode.Uri.file(file.path);
-                        const doc = await vscode.workspace.openTextDocument(uri);
-                        const editor = await vscode.window.showTextDocument(doc, { preview: false });
-                        if (typeof file.line === 'number') {
-                            const pos = new vscode.Position(file.line, 0);
-                            editor.selection = new vscode.Selection(pos, pos);
-                            editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenter);
-                        }
-                        restoredCount++;
-                    } catch {
-                        // File might not exist on this machine — skip silently
-                    }
-                }
-
-                if (restoredCount > 0) {
-                    vscode.window.showInformationMessage(
-                        `FlowSave: Restored "${data.label}" — ${restoredCount} file${restoredCount !== 1 ? 's' : ''} opened.`
-                    );
-                } else {
-                    vscode.window.showWarningMessage(
-                        'FlowSave: Context restored but no matching files were found on this machine. ' +
-                        'Make sure you have the same project folder open.'
-                    );
-                }
-
+                data = await apiClient.getSharedContext(token);
             } catch (error) {
-                vscode.window.showErrorMessage(
-                    'FlowSave: Could not restore shared context. The link may have expired.'
+                const msg = error instanceof Error ? error.message : String(error);
+                vscode.window.showErrorMessage(`FlowSave: Could not fetch context — ${msg}`);
+                return;
+            }
+
+            // Step 3: parse open files
+            let openFiles: Array<{ path: string; line: number }> = [];
+            try {
+                openFiles = JSON.parse(data.openFiles || '[]');
+            } catch {
+                vscode.window.showErrorMessage('FlowSave: Could not parse file list from shared context.');
+                return;
+            }
+
+            if (openFiles.length === 0) {
+                vscode.window.showWarningMessage(`FlowSave: "${data.label}" has no files to restore.`);
+                return;
+            }
+
+            // Step 4: open all files
+            let restoredCount = 0;
+            const failedFiles: string[] = [];
+
+            for (const file of openFiles) {
+                try {
+                    const fileUri = vscode.Uri.file(file.path);
+                    const doc = await vscode.workspace.openTextDocument(fileUri);
+                    const editor = await vscode.window.showTextDocument(doc, { preview: false });
+                    if (typeof file.line === 'number') {
+                        const pos = new vscode.Position(file.line, 0);
+                        editor.selection = new vscode.Selection(pos, pos);
+                        editor.revealRange(
+                            new vscode.Range(pos, pos),
+                            vscode.TextEditorRevealType.InCenter
+                        );
+                    }
+                    restoredCount++;
+                } catch {
+                    failedFiles.push(file.path.split('/').pop() || file.path);
+                }
+            }
+
+            // Step 5: show result
+            if (restoredCount > 0) {
+                vscode.window.showInformationMessage(
+                    `FlowSave: Restored "${data.label}" — ${restoredCount} file${restoredCount !== 1 ? 's' : ''} opened.`
+                );
+            }
+            if (failedFiles.length > 0) {
+                vscode.window.showWarningMessage(
+                    `FlowSave: ${failedFiles.length} file(s) not found on this machine: ${failedFiles.slice(0, 3).join(', ')}. ` +
+                    `Make sure the same project folder is open.`
                 );
             }
         }
