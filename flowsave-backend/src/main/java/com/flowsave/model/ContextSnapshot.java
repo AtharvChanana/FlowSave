@@ -46,6 +46,9 @@ public class ContextSnapshot {
     @Column(nullable = false)
     private boolean deleted = false;
 
+    @Column(name = "auto_saved", nullable = false)
+    private boolean autoSaved = false;
+
     @PrePersist
     protected void onCreate() {
         this.createdAt = LocalDateTime.now();
@@ -55,7 +58,7 @@ public class ContextSnapshot {
 
     public ContextSnapshot(UUID id, User user, String label, String openFiles,
                            String gitDiff, String terminalHistory, String reentryBrief,
-                           LocalDateTime createdAt, boolean deleted) {
+                           LocalDateTime createdAt, boolean deleted, boolean autoSaved) {
         this.id = id;
         this.user = user;
         this.label = label;
@@ -65,6 +68,7 @@ public class ContextSnapshot {
         this.reentryBrief = reentryBrief;
         this.createdAt = createdAt;
         this.deleted = deleted;
+        this.autoSaved = autoSaved;
     }
 
     // Getters & Setters
@@ -86,6 +90,8 @@ public class ContextSnapshot {
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
     public boolean isDeleted() { return deleted; }
     public void setDeleted(boolean deleted) { this.deleted = deleted; }
+    public boolean isAutoSaved() { return autoSaved; }
+    public void setAutoSaved(boolean autoSaved) { this.autoSaved = autoSaved; }
 
     // Builder
     public static ContextSnapshotBuilder builder() { return new ContextSnapshotBuilder(); }
@@ -100,6 +106,7 @@ public class ContextSnapshot {
         private String reentryBrief;
         private LocalDateTime createdAt;
         private boolean deleted = false;
+        private boolean autoSaved = false;
 
         public ContextSnapshotBuilder id(UUID id) { this.id = id; return this; }
         public ContextSnapshotBuilder user(User user) { this.user = user; return this; }
@@ -110,9 +117,10 @@ public class ContextSnapshot {
         public ContextSnapshotBuilder reentryBrief(String reentryBrief) { this.reentryBrief = reentryBrief; return this; }
         public ContextSnapshotBuilder createdAt(LocalDateTime createdAt) { this.createdAt = createdAt; return this; }
         public ContextSnapshotBuilder deleted(boolean deleted) { this.deleted = deleted; return this; }
+        public ContextSnapshotBuilder autoSaved(boolean autoSaved) { this.autoSaved = autoSaved; return this; }
 
         public ContextSnapshot build() {
-            return new ContextSnapshot(id, user, label, openFiles, gitDiff, terminalHistory, reentryBrief, createdAt, deleted);
+            return new ContextSnapshot(id, user, label, openFiles, gitDiff, terminalHistory, reentryBrief, createdAt, deleted, autoSaved);
         }
     }
 }

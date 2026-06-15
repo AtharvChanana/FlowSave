@@ -7,15 +7,17 @@ public class SaveContextRequest {
     private String gitDiff;
     private String terminalHistory;
     private String timestamp;
+    private boolean autoSaved = false;
 
     public SaveContextRequest() {}
 
-    public SaveContextRequest(String label, String openFiles, String gitDiff, String terminalHistory, String timestamp) {
+    public SaveContextRequest(String label, String openFiles, String gitDiff, String terminalHistory, String timestamp, boolean autoSaved) {
         this.label = label;
         this.openFiles = openFiles;
         this.gitDiff = gitDiff;
         this.terminalHistory = terminalHistory;
         this.timestamp = timestamp;
+        this.autoSaved = autoSaved;
     }
 
     public String getLabel() { return label; }
@@ -28,4 +30,6 @@ public class SaveContextRequest {
     public void setTerminalHistory(String terminalHistory) { this.terminalHistory = terminalHistory; }
     public String getTimestamp() { return timestamp; }
     public void setTimestamp(String timestamp) { this.timestamp = timestamp; }
+    public boolean isAutoSaved() { return autoSaved; }
+    public void setAutoSaved(boolean autoSaved) { this.autoSaved = autoSaved; }
 }

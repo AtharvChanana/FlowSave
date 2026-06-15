@@ -21,20 +21,22 @@ export interface OpenFileInfo {
 
 export interface SaveContextPayload {
     label: string;
-    openFiles: string; // JSON-stringified OpenFileInfo[]
+    openFiles: string;
     gitDiff: string | null;
     terminalHistory: string | null;
     timestamp: string;
+    autoSaved?: boolean;
 }
 
 export interface ContextSnapshot {
     id: string;
     label: string;
-    openFiles: string; // JSON-stringified OpenFileInfo[]
+    openFiles: string;
     gitDiff: string | null;
     terminalHistory: string | null;
     createdAt: string;
     reentryBrief: string | null;
+    autoSaved?: boolean;
 }
 
 // ── Error types ─────────────────────────────────────────────────────────
@@ -60,9 +62,6 @@ export class ApiError extends Error {
 export class ApiClient {
     constructor(private authManager: AuthManager) {}
 
-    /**
-     * Core request helper using native Node.js http/https modules.
-     */
     private async request<T>(
         method: string,
         path: string,
@@ -114,19 +113,13 @@ export class ApiClient {
                             let message = `Request failed with status ${statusCode}`;
                             try {
                                 const parsed = JSON.parse(rawBody);
-                                if (parsed.message) {
-                                    message = parsed.message;
-                                } else if (parsed.error) {
-                                    message = parsed.error;
-                                }
-                            } catch {
-                                // use default message
-                            }
+                                if (parsed.message) { message = parsed.message; }
+                                else if (parsed.error) { message = parsed.error; }
+                            } catch { /* use default */ }
                             reject(new ApiError(message, statusCode));
                             return;
                         }
 
-                        // Handle 204 No Content
                         if (statusCode === 204 || rawBody.length === 0) {
                             resolve(undefined as unknown as T);
                             return;
@@ -141,75 +134,54 @@ export class ApiClient {
                 }
             );
 
-            req.on('error', (err) => {
-                reject(new ApiError(`Network error: ${err.message}`, 0));
-            });
-
-            req.setTimeout(15000, () => {
-                req.destroy();
-                reject(new ApiError('Request timed out', 0));
-            });
-
-            if (payload) {
-                req.write(payload);
-            }
+            req.on('error', (err) => reject(new ApiError(`Network error: ${err.message}`, 0)));
+            req.setTimeout(30000, () => { req.destroy(); reject(new ApiError('Request timed out', 0)); });
+            if (payload) { req.write(payload); }
             req.end();
         });
     }
 
-    // ── Auth endpoints ─────────────────────────────────────────────────
+    // ── Auth ────────────────────────────────────────────────────────────
 
-    /**
-     * Register a new user. Returns the JWT token.
-     */
     async register(email: string, password: string): Promise<string> {
-        const res = await this.request<{ token: string }>('POST', '/api/auth/register', {
-            email,
-            password,
-        });
+        const res = await this.request<{ token: string }>('POST', '/api/auth/register', { email, password });
         await this.authManager.setToken(res.token);
         return res.token;
     }
 
-    /**
-     * Login an existing user. Returns the JWT token.
-     */
     async login(email: string, password: string): Promise<string> {
-        const res = await this.request<{ token: string }>('POST', '/api/auth/login', {
-            email,
-            password,
-        });
+        const res = await this.request<{ token: string }>('POST', '/api/auth/login', { email, password });
         await this.authManager.setToken(res.token);
         return res.token;
     }
 
-    // ── Context endpoints ──────────────────────────────────────────────
+    // ── Context ─────────────────────────────────────────────────────────
 
-    /**
-     * Save a context snapshot. Returns the created id and AI-generated brief.
-     */
     async saveContext(data: SaveContextPayload): Promise<{ id: string; brief: string }> {
         return this.request<{ id: string; brief: string }>('POST', '/api/context/save', data as unknown as Record<string, unknown>);
     }
 
-    /**
-     * List all saved context snapshots for the authenticated user.
-     */
     async listContexts(): Promise<ContextSnapshot[]> {
         return this.request<ContextSnapshot[]>('GET', '/api/context/list');
     }
 
-    /**
-     * Get a single context snapshot by ID.
-     */
     async getContext(id: string): Promise<ContextSnapshot> {
         return this.request<ContextSnapshot>('GET', `/api/context/${encodeURIComponent(id)}`);
     }
 
-    /**
-     * Delete a context snapshot by ID.
-     */
     async deleteContext(id: string): Promise<void> {
         return this.request<void>('DELETE', `/api/context/${encodeURIComponent(id)}`);
+    }
+
+    // ── Feature 2: Share ────────────────────────────────────────────────
+
+    async shareContext(id: string): Promise<{ shareUrl: string }> {
+        return this.request<{ shareUrl: string }>('POST', `/api/context/${encodeURIComponent(id)}/share`);
+    }
+
+    // ── Feature 3: Export PR ────────────────────────────────────────────
+
+    async exportPR(id: string): Promise<{ prDescription: string }> {
+        return this.request<{ prDescription: string }>('POST', `/api/context/${encodeURIComponent(id)}/export-pr`);
     }
 }

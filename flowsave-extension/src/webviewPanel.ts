@@ -56,6 +56,12 @@ export class FlowSaveWebviewProvider implements vscode.WebviewViewProvider {
                     case 'saveContext':
                         await this.handleSaveContext();
                         break;
+                    case 'shareContext':
+                        await this.handleShareContext(message.id || '');
+                        break;
+                    case 'exportPR':
+                        await this.handleExportPR(message.id || '');
+                        break;
                     case 'checkAuth':
                         await this.handleCheckAuth();
                         break;
@@ -68,6 +74,12 @@ export class FlowSaveWebviewProvider implements vscode.WebviewViewProvider {
 
     public showScreen(screen: 'list' | 'restore'): void {
         this.postMessage({ type: 'navigate', screen });
+    }
+
+    private _branchMonitor?: import('./branchMonitor').BranchMonitor;
+
+    public setBranchMonitor(monitor: import('./branchMonitor').BranchMonitor): void {
+        this._branchMonitor = monitor;
     }
 
     private postMessage(message: Record<string, unknown>): void {
@@ -156,6 +168,27 @@ export class FlowSaveWebviewProvider implements vscode.WebviewViewProvider {
     private async handleSaveContext(): Promise<void> {
         await captureContext(this.extensionContext, this.apiClient);
         await this.handleListContexts();
+    }
+
+    private async handleShareContext(id: string): Promise<void> {
+        try {
+            const result = await this.apiClient.shareContext(id);
+            this.postMessage({ type: 'shareResult', id, shareUrl: result.shareUrl });
+        } catch (error) {
+            const msg = error instanceof Error ? error.message : 'Failed to share context';
+            vscode.window.showErrorMessage(`FlowSave: ${msg}`);
+            this.postMessage({ type: 'shareError', id });
+        }
+    }
+
+    private async handleExportPR(id: string): Promise<void> {
+        try {
+            const result = await this.apiClient.exportPR(id);
+            this.postMessage({ type: 'prDescription', id, prDescription: result.prDescription });
+        } catch (error) {
+            vscode.window.showErrorMessage('FlowSave: Failed to generate PR description. Try again.');
+            this.postMessage({ type: 'prError', id });
+        }
     }
 
     private getHtmlForWebview(webview: vscode.Webview): string {
@@ -517,6 +550,65 @@ export class FlowSaveWebviewProvider implements vscode.WebviewViewProvider {
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: rgba(128,128,128,0.25); border-radius: 3px; }
         ::-webkit-scrollbar-thumb:hover { background: rgba(128,128,128,0.4); }
+
+        /* ── Auto badge (Feature 1) ── */
+        .auto-badge {
+            display: inline-block;
+            font-size: 9px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            background: rgba(128,128,128,0.18);
+            color: var(--vscode-foreground);
+            opacity: 0.5;
+            border-radius: 2px;
+            padding: 1px 5px;
+            margin-left: 6px;
+            vertical-align: middle;
+            flex-shrink: 0;
+        }
+
+        /* ── Share URL row (Feature 2) ── */
+        .share-url-row {
+            display: none;
+            align-items: center;
+            gap: 6px;
+            margin-top: 8px;
+        }
+        .share-url-row.visible { display: flex; }
+        .share-url-input {
+            flex: 1;
+            padding: 4px 7px;
+            font-size: 11px;
+            font-family: var(--vscode-editor-font-family, monospace);
+            background: var(--vscode-input-background);
+            color: var(--vscode-input-foreground);
+            border: 1px solid var(--vscode-input-border, rgba(128,128,128,0.3));
+            border-radius: 2px;
+            outline: none;
+            min-width: 0;
+        }
+
+        /* ── PR Description screen (Feature 3) ── */
+        .pr-wrap { padding: 12px; }
+        .pr-heading { font-size: 14px; font-weight: 700; margin-bottom: 3px; }
+        .pr-subheading { font-size: 11px; opacity: 0.45; margin-bottom: 14px; }
+        .pr-textarea {
+            width: 100%;
+            min-height: 320px;
+            padding: 10px;
+            font-family: var(--vscode-editor-font-family, 'Consolas', monospace);
+            font-size: 12px;
+            line-height: 1.6;
+            background: var(--vscode-editor-background);
+            color: var(--vscode-editor-foreground);
+            border: 1px solid rgba(128,128,128,0.2);
+            border-radius: 3px;
+            resize: vertical;
+            outline: none;
+            margin-bottom: 10px;
+        }
+        .pr-actions { display: flex; gap: 8px; }
     </style>
 </head>
 <body>
@@ -560,13 +652,32 @@ export class FlowSaveWebviewProvider implements vscode.WebviewViewProvider {
     <div id="context-list"></div>
 </div>
 
+<!-- PR DESCRIPTION (Feature 3) -->
+<div id="screen-pr" class="screen">
+    <div class="header">
+        <span class="header-title">PR Description</span>
+        <div class="header-actions">
+            <button class="header-btn" id="btn-pr-back">Back</button>
+        </div>
+    </div>
+    <div class="pr-wrap">
+        <div class="pr-subheading" id="pr-subheading">Generated from: —</div>
+        <textarea class="pr-textarea" id="pr-textarea" readonly></textarea>
+        <div class="pr-actions">
+            <button class="btn-primary" id="btn-pr-copy">Copy to Clipboard</button>
+        </div>
+    </div>
+</div>
+
 <script nonce="${nonce}">
 (function() {
     const vscode = acquireVsCodeApi();
     let authMode = 'login';
+    let prContextLabel = '';
 
     const screenAuth    = document.getElementById('screen-auth');
     const screenList    = document.getElementById('screen-list');
+    const screenPr      = document.getElementById('screen-pr');
     const authForm      = document.getElementById('auth-form');
     const authEmail     = document.getElementById('auth-email');
     const authPassword  = document.getElementById('auth-password');
@@ -577,9 +688,20 @@ export class FlowSaveWebviewProvider implements vscode.WebviewViewProvider {
     const authToggleText= document.getElementById('auth-toggle-text');
     const contextList   = document.getElementById('context-list');
     const listError     = document.getElementById('list-error');
+    const prTextarea    = document.getElementById('pr-textarea');
+    const prSubheading  = document.getElementById('pr-subheading');
+    const btnPrCopy     = document.getElementById('btn-pr-copy');
+    const btnPrBack     = document.getElementById('btn-pr-back');
+
+    btnPrBack.addEventListener('click', () => showScreen('list'));
+    btnPrCopy.addEventListener('click', () => {
+        navigator.clipboard.writeText(prTextarea.value).catch(() => {});
+        btnPrCopy.textContent = 'Copied';
+        setTimeout(() => { btnPrCopy.textContent = 'Copy to Clipboard'; }, 2000);
+    });
 
     function showScreen(id) {
-        [screenAuth, screenList].forEach(s => s.classList.remove('active'));
+        [screenAuth, screenList, screenPr].forEach(s => s.classList.remove('active'));
         document.getElementById('screen-' + id).classList.add('active');
     }
 
@@ -692,7 +814,9 @@ export class FlowSaveWebviewProvider implements vscode.WebviewViewProvider {
                 '<div class="ctx-summary">' +
                     '<div class="ctx-bar"></div>' +
                     '<div class="ctx-body">' +
-                        '<div class="ctx-label">' + esc(ctx.label) + '</div>' +
+                        '<div class="ctx-label">' + esc(ctx.label) +
+                            (ctx.autoSaved ? '<span class="auto-badge">Auto</span>' : '') +
+                        '</div>' +
                         '<div class="ctx-meta">' + fmtTime(ctx.createdAt) + '  &middot;  ' + fileCount + ' file' + (fileCount !== 1 ? 's' : '') + '</div>' +
                         (previewText ? '<div class="ctx-preview">' + esc(previewText) + '</div>' : '') +
                     '</div>' +
@@ -713,7 +837,17 @@ export class FlowSaveWebviewProvider implements vscode.WebviewViewProvider {
                     // Actions
                     '<div class="actions">' +
                         '<button class="btn-primary btn-restore" data-id="' + ctx.id + '">Restore</button>' +
+                        '<button class="btn-secondary btn-share" data-id="' + ctx.id + '">Share</button>' +
                         '<button class="btn-danger btn-delete" data-id="' + ctx.id + '">Delete</button>' +
+                    '</div>' +
+                    // Share URL row (hidden until share clicked)
+                    '<div class="share-url-row" id="share-row-' + ctx.id + '">' +
+                        '<input class="share-url-input" id="share-input-' + ctx.id + '" readonly />' +
+                        '<button class="btn-secondary btn-copy-link" data-id="' + ctx.id + '">Copy Link</button>' +
+                    '</div>' +
+                    // Export PR button
+                    '<div class="actions" style="margin-top:6px;">' +
+                        '<button class="btn-secondary btn-export-pr" data-id="' + ctx.id + '" data-label="' + esc(ctx.label) + '">Export PR</button>' +
                     '</div>' +
                 '</div>';
 
@@ -743,6 +877,38 @@ export class FlowSaveWebviewProvider implements vscode.WebviewViewProvider {
                 btn.disabled = true;
                 btn.textContent = 'Deleting...';
                 vscode.postMessage({ type: 'deleteContext', id: btn.getAttribute('data-id') });
+            });
+        });
+        // Share buttons (Feature 2)
+        contextList.querySelectorAll('.btn-share').forEach(btn => {
+            btn.addEventListener('click', e => {
+                e.stopPropagation();
+                btn.disabled = true;
+                btn.innerHTML = '<span class="spinner"></span>Sharing...';
+                vscode.postMessage({ type: 'shareContext', id: btn.getAttribute('data-id') });
+            });
+        });
+        // Copy link buttons (Feature 2)
+        contextList.querySelectorAll('.btn-copy-link').forEach(btn => {
+            btn.addEventListener('click', e => {
+                e.stopPropagation();
+                const id = btn.getAttribute('data-id');
+                const input = document.getElementById('share-input-' + id);
+                if (input) {
+                    navigator.clipboard.writeText(input.value).catch(() => {});
+                    btn.textContent = 'Copied';
+                    setTimeout(() => { btn.textContent = 'Copy Link'; }, 2000);
+                }
+            });
+        });
+        // Export PR buttons (Feature 3)
+        contextList.querySelectorAll('.btn-export-pr').forEach(btn => {
+            btn.addEventListener('click', e => {
+                e.stopPropagation();
+                btn.disabled = true;
+                btn.innerHTML = '<span class="spinner"></span>Generating...';
+                vscode.postMessage({ type: 'exportPR', id: btn.getAttribute('data-id') });
+                prContextLabel = btn.getAttribute('data-label') || '';
             });
         });
     }
@@ -812,6 +978,34 @@ export class FlowSaveWebviewProvider implements vscode.WebviewViewProvider {
                 contextList.innerHTML = '';
                 showErr(listError, msg.message);
                 break;
+            // Feature 2: Share result
+            case 'shareResult': {
+                const shareBtn = contextList.querySelector('.btn-share[data-id="' + msg.id + '"]');
+                if (shareBtn) { shareBtn.disabled = false; shareBtn.textContent = 'Share'; }
+                const row = document.getElementById('share-row-' + msg.id);
+                const inp = document.getElementById('share-input-' + msg.id);
+                if (row && inp) { inp.value = msg.shareUrl; row.classList.add('visible'); }
+                break;
+            }
+            case 'shareError': {
+                const shareBtn2 = contextList.querySelector('.btn-share[data-id="' + msg.id + '"]');
+                if (shareBtn2) { shareBtn2.disabled = false; shareBtn2.textContent = 'Share'; }
+                break;
+            }
+            // Feature 3: PR description result
+            case 'prDescription': {
+                const prBtn = contextList.querySelector('.btn-export-pr[data-id="' + msg.id + '"]');
+                if (prBtn) { prBtn.disabled = false; prBtn.textContent = 'Export PR'; }
+                prTextarea.value = msg.prDescription;
+                prSubheading.textContent = 'Generated from: ' + (prContextLabel || 'context');
+                showScreen('pr');
+                break;
+            }
+            case 'prError': {
+                const prBtn2 = contextList.querySelector('.btn-export-pr[data-id="' + msg.id + '"]');
+                if (prBtn2) { prBtn2.disabled = false; prBtn2.textContent = 'Export PR'; }
+                break;
+            }
         }
     });
 
@@ -828,6 +1022,8 @@ interface WebviewMessage {
     id?: string;
     email?: string;
     password?: string;
+    shareUrl?: string;
+    prDescription?: string;
 }
 
 function getNonce(): string {

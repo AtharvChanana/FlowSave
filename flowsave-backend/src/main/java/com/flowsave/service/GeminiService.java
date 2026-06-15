@@ -130,4 +130,61 @@ public class GeminiService {
     private String fallbackBrief() {
         return "Brief generation failed — your files and diff are saved.";
     }
+
+    // ── Feature 3: PR Description ────────────────────────────────────────
+
+    public String generatePRDescription(String label, String openFiles, String gitDiff,
+                                         String terminalHistory, String createdAt) {
+        try {
+            String truncatedDiff = gitDiff != null
+                    ? (gitDiff.length() > 3000 ? gitDiff.substring(0, 3000) : gitDiff)
+                    : "No diff available";
+
+            String lastCommands = extractLastCommands(terminalHistory);
+
+            String prompt = "You are a developer assistant. Based on the context snapshot below, generate a professional GitHub Pull Request description in clean markdown. Use exactly this structure and nothing else:\n\n" +
+                    "## What does this PR do?\n" +
+                    "[2-3 sentences explaining what this PR changes, based on the git diff and files]\n\n" +
+                    "## Why?\n" +
+                    "[The problem being solved or reason for this change, inferred from the label and diff]\n\n" +
+                    "## Changes made\n" +
+                    "[Bullet list. One bullet per file changed. Format: `filename` — what changed in that file and why]\n\n" +
+                    "## How to test\n" +
+                    "[Step by step testing instructions based on what was changed in the diff]\n\n" +
+                    "Be specific. Reference actual file names from the snapshot. Use the git diff to identify exactly what changed. Keep it concise and professional. No fluff. No preamble. Start directly with ## What does this PR do?\n\n" +
+                    "Developer label: " + (label != null ? label : "N/A") + "\n" +
+                    "Open files: " + (openFiles != null ? openFiles : "N/A") + "\n" +
+                    "Git diff (first 3000 chars): " + truncatedDiff + "\n" +
+                    "Terminal commands: " + (lastCommands != null ? lastCommands : "None") + "\n" +
+                    "Saved at: " + (createdAt != null ? createdAt : "N/A");
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.setBearerAuth(apiKey);
+
+            Map<String, Object> requestBody = Map.of(
+                    "model", model,
+                    "messages", List.of(Map.of("role", "user", "content", prompt)),
+                    "temperature", 0.3,
+                    "max_tokens", 800
+            );
+
+            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
+            ResponseEntity<String> response = restTemplate.postForEntity(GROQ_API_URL, entity, String.class);
+
+            if (response.getBody() != null) {
+                JsonNode root = objectMapper.readTree(response.getBody());
+                JsonNode contentNode = root.path("choices").path(0).path("message").path("content");
+                if (!contentNode.isMissingNode()) {
+                    return contentNode.asText();
+                }
+            }
+
+            return "PR description generation failed — your context is saved.";
+
+        } catch (Exception e) {
+            logger.error("Failed to generate PR description: {}", e.getMessage(), e);
+            return "PR description generation failed — your context is saved.";
+        }
+    }
 }

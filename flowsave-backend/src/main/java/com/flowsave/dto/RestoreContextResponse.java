@@ -12,11 +12,12 @@ public class RestoreContextResponse {
     private String terminalHistory;
     private String reentryBrief;
     private LocalDateTime createdAt;
+    private boolean autoSaved;
 
     public RestoreContextResponse() {}
 
     public RestoreContextResponse(UUID id, String label, String openFiles, String gitDiff,
-                                  String terminalHistory, String reentryBrief, LocalDateTime createdAt) {
+                                  String terminalHistory, String reentryBrief, LocalDateTime createdAt, boolean autoSaved) {
         this.id = id;
         this.label = label;
         this.openFiles = openFiles;
@@ -24,6 +25,7 @@ public class RestoreContextResponse {
         this.terminalHistory = terminalHistory;
         this.reentryBrief = reentryBrief;
         this.createdAt = createdAt;
+        this.autoSaved = autoSaved;
     }
 
     // Getters & Setters
@@ -41,6 +43,8 @@ public class RestoreContextResponse {
     public void setReentryBrief(String reentryBrief) { this.reentryBrief = reentryBrief; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
+    public boolean isAutoSaved() { return autoSaved; }
+    public void setAutoSaved(boolean autoSaved) { this.autoSaved = autoSaved; }
 
     // Builder
     public static RestoreContextResponseBuilder builder() { return new RestoreContextResponseBuilder(); }
@@ -53,6 +57,7 @@ public class RestoreContextResponse {
         private String terminalHistory;
         private String reentryBrief;
         private LocalDateTime createdAt;
+        private boolean autoSaved;
 
         public RestoreContextResponseBuilder id(UUID id) { this.id = id; return this; }
         public RestoreContextResponseBuilder label(String label) { this.label = label; return this; }
@@ -61,9 +66,10 @@ public class RestoreContextResponse {
         public RestoreContextResponseBuilder terminalHistory(String terminalHistory) { this.terminalHistory = terminalHistory; return this; }
         public RestoreContextResponseBuilder reentryBrief(String reentryBrief) { this.reentryBrief = reentryBrief; return this; }
         public RestoreContextResponseBuilder createdAt(LocalDateTime createdAt) { this.createdAt = createdAt; return this; }
+        public RestoreContextResponseBuilder autoSaved(boolean autoSaved) { this.autoSaved = autoSaved; return this; }
 
         public RestoreContextResponse build() {
-            return new RestoreContextResponse(id, label, openFiles, gitDiff, terminalHistory, reentryBrief, createdAt);
+            return new RestoreContextResponse(id, label, openFiles, gitDiff, terminalHistory, reentryBrief, createdAt, autoSaved);
         }
     }
 }

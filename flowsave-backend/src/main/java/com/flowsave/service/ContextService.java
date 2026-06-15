@@ -2,12 +2,16 @@ package com.flowsave.service;
 
 import com.flowsave.dto.SaveContextRequest;
 import com.flowsave.model.ContextSnapshot;
+import com.flowsave.model.ShareToken;
 import com.flowsave.model.User;
 import com.flowsave.repository.ContextSnapshotRepository;
+import com.flowsave.repository.ShareTokenRepository;
 import com.flowsave.repository.UserRepository;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -18,13 +22,19 @@ public class ContextService {
     private final ContextSnapshotRepository snapshotRepository;
     private final UserRepository userRepository;
     private final GeminiService geminiService;
+    private final ShareTokenRepository shareTokenRepository;
+
+    @Value("${flowsave.base-url:https://flowsave.onrender.com}")
+    private String baseUrl;
 
     public ContextService(ContextSnapshotRepository snapshotRepository,
                           UserRepository userRepository,
-                          GeminiService geminiService) {
+                          GeminiService geminiService,
+                          ShareTokenRepository shareTokenRepository) {
         this.snapshotRepository = snapshotRepository;
         this.userRepository = userRepository;
         this.geminiService = geminiService;
+        this.shareTokenRepository = shareTokenRepository;
     }
 
     @Transactional
@@ -46,13 +56,14 @@ public class ContextService {
                 .gitDiff(request.getGitDiff())
                 .terminalHistory(request.getTerminalHistory())
                 .reentryBrief(brief)
+                .autoSaved(request.isAutoSaved())
                 .deleted(false)
                 .build();
 
         ContextSnapshot saved = snapshotRepository.save(snapshot);
 
         return Map.of(
-                "id", saved.getId(),
+                "id", saved.getId().toString(),
                 "brief", brief
         );
     }
@@ -73,6 +84,36 @@ public class ContextService {
         ContextSnapshot snapshot = getContext(id, userEmail);
         snapshot.setDeleted(true);
         snapshotRepository.save(snapshot);
+    }
+
+    // ── Feature 2: Share ─────────────────────────────────────────────────
+
+    @Transactional
+    public Map<String, String> shareContext(UUID id, String userEmail) {
+        ContextSnapshot snapshot = getContext(id, userEmail);
+
+        ShareToken shareToken = new ShareToken();
+        shareToken.setContextSnapshot(snapshot);
+        shareToken.setToken(UUID.randomUUID());
+        shareToken.setExpiresAt(LocalDateTime.now().plusDays(7));
+        ShareToken saved = shareTokenRepository.save(shareToken);
+
+        String shareUrl = baseUrl + "/shared/" + saved.getToken();
+        return Map.of("shareUrl", shareUrl);
+    }
+
+    // ── Feature 3: Export PR Description ─────────────────────────────────
+
+    public Map<String, String> exportPR(UUID id, String userEmail) {
+        ContextSnapshot snapshot = getContext(id, userEmail);
+        String prDescription = geminiService.generatePRDescription(
+                snapshot.getLabel(),
+                snapshot.getOpenFiles(),
+                snapshot.getGitDiff(),
+                snapshot.getTerminalHistory(),
+                snapshot.getCreatedAt() != null ? snapshot.getCreatedAt().toString() : ""
+        );
+        return Map.of("prDescription", prDescription);
     }
 
     private User findUserByEmail(String email) {
