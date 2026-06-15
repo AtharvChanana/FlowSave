@@ -1,0 +1,47 @@
+{
+  "name": "flowsave",
+  "displayName": "FlowSave",
+  "description": "Save and restore your development context with AI-powered re-entry briefs",
+  "version": "1.0.0",
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Other"],
+  "activationEvents": ["onCommand:flowsave.save", "onCommand:flowsave.restore", "onCommand:flowsave.list"],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      { "command": "flowsave.save", "title": "FlowSave: Save Context" },
+      { "command": "flowsave.restore", "title": "FlowSave: Restore Context" },
+      { "command": "flowsave.list", "title": "FlowSave: Show Saved Contexts" }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "flowsave-sidebar",
+          "title": "FlowSave",
+          "icon": "resources/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "flowsave-sidebar": [
+        {
+          "type": "webview",
+          "id": "flowsave.webview",
+          "name": "FlowSave"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.3.0"
+  },
+  "publisher": "flowsave"
+}

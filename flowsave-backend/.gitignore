@@ -1,0 +1,9 @@
+target/
+*.class
+*.jar
+*.war
+*.log
+.mvn/
+mvnw
+mvnw.cmd
+application-local.properties
