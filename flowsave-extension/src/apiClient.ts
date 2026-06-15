@@ -184,4 +184,13 @@ export class ApiClient {
     async exportPR(id: string): Promise<{ prDescription: string }> {
         return this.request<{ prDescription: string }>('POST', `/api/context/${encodeURIComponent(id)}/export-pr`);
     }
+
+    // ── Public shared context (no auth required) ────────────────────────
+
+    async getSharedContext(token: string): Promise<{ label: string; openFiles: string; reentryBrief: string }> {
+        return this.request<{ label: string; openFiles: string; reentryBrief: string }>(
+            'GET',
+            `/api/shared/${encodeURIComponent(token)}/context`
+        );
+    }
 }
