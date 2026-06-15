@@ -1,123 +1,167 @@
 # FlowSave
 
-**Save your flow. Restore your focus.**
+**Save your flow. Restore your focus. Share it with your team.**
 
-FlowSave captures your entire working context — open files, cursor positions, git diff, and terminal history — then uses AI to write a concise re-entry brief so you know exactly where you left off when you return.
+Every interruption costs you 23 minutes of focus. FlowSave gives them back.
 
-No more spending 10 minutes trying to remember what you were doing.
-
----
-
-## How it works
-
-When you need to switch tasks, FlowSave snapshots:
-- Every file you had open and which line your cursor was on
-- Your current git diff (uncommitted changes)
-- Your recent terminal commands
-- An AI-generated summary of what you were doing and what to do next
-
-When you come back, one click reopens all your files at the exact cursor positions and shows you the re-entry brief.
+When you leave a task, FlowSave captures your entire working context — open files, cursor positions, git diff, terminal history — and uses AI to write a precise re-entry brief. When you return, one click reopens everything exactly where you left off.
 
 ---
 
-## Sidebar
+## The Problem
 
-![FlowSave sidebar showing a context card expanded with re-entry brief, open files, and action buttons](images/sidebar.png)
+You're deep in flow. Debugging a race condition in the JWT refresh logic. You finally understand why tokens are invalidating out of order.
 
-Each saved context shows:
-- The label you gave it (or an auto-generated one for branch switches)
-- A concise AI re-entry brief — what you were doing, what files mattered, what to do next
-- Every open file with its exact line number
-- Restore, Share, and Delete actions
+Then: a Slack message. A meeting. A production incident.
+
+You come back 30 minutes later. **Blank.** Which file? Which function? What was I even testing?
+
+> *"It takes an average of 23 minutes and 15 seconds to return to a task after an interruption."*
+> — Gloria Mark, University of California, Irvine
+
+**This happens to you multiple times every day.** And most tools only solve half of it.
+
+---
+
+## Why FlowSave is Different
+
+Other tools save your file list. FlowSave saves your **mental state** — and then goes further.
+
+| | FlowSave | Dev Checkpoint | FlowSnap |
+|---|---|---|---|
+| AI-generated re-entry brief | Yes | No (heuristic text) | No |
+| Cloud sync across devices | Yes | No (local only) | No |
+| Share context with teammates | Yes | No | No |
+| Branch-aware auto-save | Yes | No | No |
+| Export as PR description | Yes | No | No |
+| Works after reinstall | Yes | No | No |
+| Open teammate's files in VS Code | Yes | No | No |
+
+---
+
+## The Sidebar
+
+![FlowSave sidebar showing a context card expanded with AI re-entry brief, open files, and action buttons](images/sidebar.png)
+
+Every saved context shows:
+- The label — what you were working on
+- The AI re-entry brief — **specific to your actual code**, not a generic summary
+- Every file you had open with its exact line number
+- Restore, Share, and Export PR actions
 
 ---
 
 ## Features
 
-### Save Context
+### AI Re-entry Brief
 
-Press `Cmd+Shift+P` → **FlowSave: Save Context**, enter a short label (or press Enter to skip), and your context is saved with an AI-generated brief.
+When you save, FlowSave sends your file list, git diff, and terminal history to an LLM. It comes back with a brief like this:
 
-### Restore Context
+> *You were fixing a race condition in `auth/middleware.ts` at line 47. The token refresh was triggering before the previous token was properly invalidated. Your git diff shows you started adding a mutex lock. The next step is to finish the lock implementation and test with concurrent requests.*
 
-Click any card in the sidebar and hit **Restore**. All your files reopen at the exact cursor positions.
+That's not a heuristic. That's AI that actually read your diff.
+
+---
 
 ### Auto-Save on Branch Switch
 
-![FlowSave auto-saving context silently when switching git branches](images/autosave.png)
+![FlowSave auto-saving context when switching git branches](images/autosave.png)
 
-When you switch git branches, FlowSave automatically saves your context in the background. When you switch back to a branch that has a saved context, you'll be prompted to restore it. No manual action needed.
+When you switch git branches, FlowSave saves your current context silently in the background. When you switch back, you're prompted to restore. No keystrokes required.
+
+Dev Checkpoint auto-captures on idle. That misses the most common interruption pattern: *leaving a branch to fix something urgent on main*.
+
+---
 
 ### Share Context with Your Team
 
-Click **Share** on any context card to get a public link. Anyone with the link can:
-- Read the full context in their browser — including the re-entry brief, open files, and terminal commands
-- Click **Open in VS Code** to open all the files in their own editor at the saved positions (requires the same project folder)
-
 ![FlowSave shared context page in browser](images/share.png)
 
-Share links are valid for 7 days.
+Click **Share** on any saved context. You get a public link. Your teammate:
+1. Opens the link in their browser — sees your re-entry brief, open files, and terminal commands
+2. Clicks **Open in VS Code** — all your files open in their editor at the saved positions
+
+No copy-pasting file names. No "which commit were you on?" No 10-minute catch-up call.
+
+Share links work for 7 days.
+
+---
 
 ### Export as PR Description
 
-Click **Export PR** on any context card. FlowSave uses AI to generate a structured pull request description based on your context — what changed, why, and how to test it.
+![FlowSave generating a PR description from context](images/pr.png)
 
-![FlowSave PR description screen](images/pr.png)
+Click **Export PR** on any context. FlowSave uses AI to generate a structured pull request description from your actual changes — what changed, why, and how to test it. Copy it directly into GitHub.
 
-Copy it directly into GitHub, GitLab, or Bitbucket.
+---
+
+### Cloud Sync
+
+Your contexts live in the cloud. Log in from any machine. Your full history is there.
+
+Dev Checkpoint stores everything in `globalStorageUri` on your local machine. Reinstall VS Code, get a new laptop, or hand off to a contractor — and all context is gone.
 
 ---
 
 ## Getting Started
 
 1. Install FlowSave from the Marketplace
-2. Click the bookmark icon in the VS Code Activity Bar
-3. Create an account with your email and password
-4. Open any project and use `Cmd+Shift+P` → **FlowSave: Save Context**
+2. Click the FlowSave icon in the Activity Bar
+3. Create a free account with your email
+4. Press `Cmd+Shift+P` → **FlowSave: Save Context**
 
-Your contexts are stored securely in the cloud and synced across devices.
+That's it. No API keys. No local config files. No setup script to run.
 
 ---
 
 ## Terminal Command Tracking
 
-To capture terminal commands, add this one-time hook to your shell:
+To capture recent terminal commands, add a one-time hook to your shell:
 
-**Zsh (macOS default)** — add to `~/.zshrc`:
+**Zsh** — add to `~/.zshrc`:
 ```bash
 preexec() {
   echo "$1" >> /tmp/flowsave_history.txt
   tail -50 /tmp/flowsave_history.txt > /tmp/flowsave_history_tmp.txt && mv /tmp/flowsave_history_tmp.txt /tmp/flowsave_history.txt
 }
 ```
-
-Then run `source ~/.zshrc`.
+Then `source ~/.zshrc`.
 
 ---
 
 ## Commands
 
-| Command | Description |
+| Command | Shortcut |
 |---|---|
-| FlowSave: Save Context | Capture current context and save it |
-| FlowSave: Restore Context | Open the sidebar to browse and restore |
-| FlowSave: Show Saved Contexts | Open the sidebar |
+| FlowSave: Save Context | `Cmd+Shift+P` → FlowSave: Save Context |
+| FlowSave: Restore Context | `Cmd+Shift+P` → FlowSave: Restore Context |
+| FlowSave: Show Saved Contexts | Click the FlowSave icon in the Activity Bar |
+
+---
+
+## What Gets Captured
+
+- Every open file and the exact line your cursor was on
+- Your current git diff (staged and unstaged)
+- Your recent terminal commands (last 50)
+- Timestamp of when you saved
+- AI-generated re-entry brief referencing your actual file names, line numbers, and changes
 
 ---
 
 ## Requirements
 
 - VS Code 1.85 or later
-- An internet connection (contexts are stored in the cloud)
+- An internet connection
 
 ---
 
 ## Privacy
 
-Your contexts (file paths, git diffs, terminal commands) are stored encrypted on a secure backend and are only accessible with your account credentials. Share links are the only way to make a context public, and they expire after 7 days.
+Your context data (file paths, git diffs, terminal history) is stored on a secure backend, encrypted at rest, and only accessible with your account credentials. Share links are opt-in and expire after 7 days. We do not sell or share your data.
 
 ---
 
 ## License
 
-MIT — [GitHub Repository](https://github.com/AtharvChanana/FlowSave)
+MIT — [GitHub](https://github.com/AtharvChanana/FlowSave)
